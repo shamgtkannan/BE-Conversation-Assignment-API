@@ -1,0 +1,18 @@
+.claude/worktrees
+.claude/settings.local.json
+
+# Dependencies
+node_modules
+
+# Nx internal cache and workspace metadata
+.nx/cache
+.nx/workspace-data
+.nx/migrate-runs
+.nx/polygraph
+.nx/self-healing
+
+# Build outputs and temporary artifacts
+/dist
+/tmp
+out-tsc
+/coverage

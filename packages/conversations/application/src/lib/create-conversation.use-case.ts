@@ -1,4 +1,4 @@
-import { ConversationStatus, IConversationEntity } from 'conversations-domain';
+import { Conversation, ConversationStatus, IConversationEntity } from 'conversations-domain';
 import { Clock, ConversationRepository, IdGenerator } from './ports';
 
 /** Input of {@link CreateConversationUseCase}. */
@@ -12,7 +12,6 @@ export interface CreateConversationCommand {
 
 /**
  * Creates an unassigned conversation in the caller's workspace and saves it.
- * Not implemented yet.
  *
  * @throws InvalidConversationError when the subject or status breaks a domain rule.
  */
@@ -23,11 +22,17 @@ export class CreateConversationUseCase {
     private readonly clock: Clock,
   ) {}
 
-  execute(command: CreateConversationCommand): Promise<IConversationEntity> {
-    void command;
-    void this.conversations;
-    void this.ids;
-    void this.clock;
-    throw new Error('Not implemented');
+  async execute(command: CreateConversationCommand): Promise<IConversationEntity> {
+    // The domain validates before anything is stored.
+    const conversation = Conversation.create({
+      id: this.ids.next(),
+      workspaceId: command.workspaceId,
+      subject: command.subject,
+      status: command.status,
+      now: this.clock.now(),
+    });
+
+    await this.conversations.save(conversation);
+    return conversation;
   }
 }

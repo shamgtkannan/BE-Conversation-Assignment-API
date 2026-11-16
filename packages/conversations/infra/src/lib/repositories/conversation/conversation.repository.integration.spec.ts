@@ -173,6 +173,93 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
     });
   });
 
+  describe('findById', () => {
+    it('returns a saved conversation as a plain entity with the assignment fields absent', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+
+      const found = await repository.findById('workspace_1', conversation.id);
+
+      expect(found).toEqual({
+        id: conversation.id,
+        workspaceId: 'workspace_1',
+        subject: 'Unable to log in',
+        status: 'open',
+        createdAt: now,
+        updatedAt: now,
+      });
+      // Absent, not null and not a Mongoose property: the domain's "unassigned".
+      expect(found?.assignedAgentId).toBeUndefined();
+      expect(found?.assignedAt).toBeUndefined();
+      expect(found?.assignedBy).toBeUndefined();
+    });
+
+    it('returns exactly the entity fields: no _id, no Mongoose internals', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+
+      const found = await repository.findById('workspace_1', conversation.id);
+
+      expect(Object.keys(found ?? {}).sort()).toEqual(
+        ['createdAt', 'id', 'status', 'subject', 'updatedAt', 'workspaceId'].sort(),
+      );
+    });
+
+    it('reads the assignment fields of an assigned conversation', async () => {
+      const id = new mongoose.Types.ObjectId();
+      const assignedAt = new Date('2026-11-13T09:00:00.000Z');
+      await model.collection.insertOne({
+        _id: id,
+        workspaceId: 'workspace_1',
+        subject: 'Unable to log in',
+        status: 'open',
+        assignedAgentId: '65f1a2b3c4d5e6f708091a2b',
+        assignedAt,
+        assignedBy: 'user_123',
+        createdAt: now,
+        updatedAt: assignedAt,
+      });
+
+      const found = await repository.findById('workspace_1', id.toHexString());
+
+      expect(found).toEqual({
+        id: id.toHexString(),
+        workspaceId: 'workspace_1',
+        subject: 'Unable to log in',
+        status: 'open',
+        assignedAgentId: '65f1a2b3c4d5e6f708091a2b',
+        assignedAt,
+        assignedBy: 'user_123',
+        createdAt: now,
+        updatedAt: assignedAt,
+      });
+      expect(found?.assignedAt).toBeInstanceOf(Date);
+    });
+
+    it('reads a closed conversation', async () => {
+      const conversation = newConversation({ status: 'closed' });
+      await repository.save(conversation);
+
+      expect((await repository.findById('workspace_1', conversation.id))?.status).toBe('closed');
+    });
+
+    it('returns null for an id that does not exist', async () => {
+      await repository.save(newConversation());
+
+      expect(
+        await repository.findById('workspace_1', new mongoose.Types.ObjectId().toHexString()),
+      ).toBeNull();
+    });
+
+    it('returns null for a conversation of another workspace, and the owner still finds it', async () => {
+      const conversation = newConversation({ workspaceId: 'workspace_2' });
+      await repository.save(conversation);
+
+      expect(await repository.findById('workspace_1', conversation.id)).toBeNull();
+      expect(await repository.findById('workspace_2', conversation.id)).not.toBeNull();
+    });
+  });
+
   describe('indexes', () => {
     it('exist in the database', async () => {
       const keys = (await model.collection.indexes()).map((index) => index.key);

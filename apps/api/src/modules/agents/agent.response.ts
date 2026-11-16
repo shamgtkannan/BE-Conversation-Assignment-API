@@ -10,7 +10,12 @@ export interface AgentResponse {
   updatedAt: string;
 }
 
-/** Converts a domain agent to its response shape. Not implemented yet. */
-export const toAgentResponse = (_agent: IAgentEntity): AgentResponse => {
-  throw new Error('Not implemented');
-};
+/** Converts a domain agent to its response shape. */
+export const toAgentResponse = (agent: IAgentEntity): AgentResponse => ({
+  id: agent.id,
+  name: agent.name,
+  email: agent.email,
+  workspaceId: agent.workspaceId,
+  createdAt: agent.createdAt.toISOString(),
+  updatedAt: agent.updatedAt.toISOString(),
+});

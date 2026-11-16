@@ -16,7 +16,8 @@ export interface CreateAgentCommand {
  * @throws AgentEmailAlreadyExistsError when the email is taken in the workspace.
  */
 export class CreateAgentUseCase {
-  execute(_command: CreateAgentCommand): Promise<IAgentEntity> {
+  execute(command: CreateAgentCommand): Promise<IAgentEntity> {
+    void command;
     throw new Error('Not implemented');
   }
 }

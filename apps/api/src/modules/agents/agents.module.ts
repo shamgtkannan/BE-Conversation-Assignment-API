@@ -1,10 +1,33 @@
 import { Module } from '@nestjs/common';
-import { CreateAgentUseCase } from 'agents-application';
+import {
+  AGENT_REPOSITORY,
+  AgentRepository,
+  CLOCK,
+  Clock,
+  CreateAgentUseCase,
+  ID_GENERATOR,
+  IdGenerator,
+} from 'agents-application';
+import { AgentRepositoryModule } from 'agents-infra';
+import { SystemClock } from '../../common/system-clock';
 import { AgentsController } from './agents.controller';
 
+/**
+ * Wires the agents feature: ports are bound to MongoDB adapters by
+ * `AgentRepositoryModule`, and the use case, a plain class without Nest
+ * decorators, is assembled here with `useFactory`.
+ */
 @Module({
+  imports: [AgentRepositoryModule],
   controllers: [AgentsController],
-  // Placeholder: becomes a useFactory with the repository once the application layer exists.
-  providers: [CreateAgentUseCase],
+  providers: [
+    { provide: CLOCK, useClass: SystemClock },
+    {
+      provide: CreateAgentUseCase,
+      useFactory: (agents: AgentRepository, ids: IdGenerator, clock: Clock) =>
+        new CreateAgentUseCase(agents, ids, clock),
+      inject: [AGENT_REPOSITORY, ID_GENERATOR, CLOCK],
+    },
+  ],
 })
 export class AgentsModule {}

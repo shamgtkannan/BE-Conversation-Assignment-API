@@ -11,7 +11,12 @@ import * as mongoose from 'mongoose';
 import { AppModule } from './app.module';
 import { createValidationPipe } from './validation-pipe';
 
-const dbName = process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test';
+// Each integration suite gets its own database (here: assignment_api_test), because nx runs
+// suites in parallel and every suite empties and drops the database it uses.
+const dbName = (process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test').replace(
+  /_test$/,
+  '_api_test',
+);
 
 // Point the app at the test database before the module reads its config.
 process.env['MONGODB_HOSTS'] =

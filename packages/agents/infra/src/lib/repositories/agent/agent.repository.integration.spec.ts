@@ -14,7 +14,12 @@ import { AgentDo } from './schema';
 
 const hosts = process.env['MONGODB_TEST_HOSTS'] ?? 'mongodb1:27801,mongodb2:27802,mongodb3:27803';
 const replicaSet = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
-const dbName = process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test';
+// Each integration suite gets its own database (here: assignment_agents_infra_test), because
+// nx runs suites in parallel and every suite empties and drops the database it uses.
+const dbName = (process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test').replace(
+  /_test$/,
+  '_agents_infra_test',
+);
 
 const now = new Date('2026-11-13T08:30:00.000Z');
 
@@ -121,6 +126,38 @@ describe('MongooseAgentRepository (real MongoDB)', () => {
     expect(indexes).toContainEqual(
       expect.objectContaining({ key: { workspaceId: 1, email: 1 }, unique: true }),
     );
+  });
+
+  describe('findById', () => {
+    it('returns the agent as a plain entity', async () => {
+      const agent = newAgent();
+      await repository.save(agent);
+
+      expect(await repository.findById('workspace_1', agent.id)).toEqual({
+        id: agent.id,
+        workspaceId: 'workspace_1',
+        name: 'Ada Lovelace',
+        email: 'ada@example.com',
+        createdAt: now,
+        updatedAt: now,
+      });
+    });
+
+    it('returns null for an id that does not exist', async () => {
+      await repository.save(newAgent());
+
+      expect(
+        await repository.findById('workspace_1', new mongoose.Types.ObjectId().toHexString()),
+      ).toBeNull();
+    });
+
+    it('returns null for an agent that belongs to another workspace', async () => {
+      const agent = newAgent({ workspaceId: 'workspace_2' });
+      await repository.save(agent);
+
+      expect(await repository.findById('workspace_1', agent.id)).toBeNull();
+      expect(await repository.findById('workspace_2', agent.id)).not.toBeNull();
+    });
   });
 
   describe('list', () => {

@@ -1,3 +1,4 @@
+import { isAgentId } from '../agent-id';
 import {
   InvalidPageRequestError,
   PageRequestField,
@@ -11,9 +12,6 @@ export interface AgentCursor {
   createdAt: Date;
   id: string;
 }
-
-/** Agent ids are 24-character lowercase hex strings (MongoDB ObjectIds). */
-const ID_FORMAT = /^[0-9a-f]{24}$/;
 
 /**
  * Turns a position into an opaque, URL-safe token (base64url of a small JSON
@@ -45,7 +43,7 @@ export const decodeCursor = (token: string, field: PageRequestField): AgentCurso
   }
 
   const { c, i } = parsed as { c?: unknown; i?: unknown };
-  if (typeof c !== 'string' || typeof i !== 'string' || !ID_FORMAT.test(i)) {
+  if (typeof c !== 'string' || typeof i !== 'string' || !isAgentId(i)) {
     throw invalid();
   }
   const createdAt = new Date(c);

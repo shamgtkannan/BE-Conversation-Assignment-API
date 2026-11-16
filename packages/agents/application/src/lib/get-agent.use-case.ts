@@ -1,4 +1,4 @@
-import { IAgentEntity } from 'agents-domain';
+import { AgentNotFoundError, IAgentEntity, InvalidAgentError, isAgentId } from 'agents-domain';
 import { AgentRepository } from './ports';
 
 /** Input of {@link GetAgentUseCase}. */
@@ -9,7 +9,7 @@ export interface GetAgentCommand {
 }
 
 /**
- * Reads one agent of the caller's workspace by id. Not implemented yet.
+ * Reads one agent of the caller's workspace by id.
  *
  * @throws InvalidAgentError when the id is malformed.
  * @throws AgentNotFoundError when no such agent exists in the workspace.
@@ -17,9 +17,15 @@ export interface GetAgentCommand {
 export class GetAgentUseCase {
   constructor(private readonly agents: AgentRepository) {}
 
-  execute(command: GetAgentCommand): Promise<IAgentEntity> {
-    void command;
-    void this.agents;
-    throw new Error('Not implemented');
+  async execute({ workspaceId, id }: GetAgentCommand): Promise<IAgentEntity> {
+    // Check the format first, so a malformed id never reaches the database.
+    if (!isAgentId(id)) {
+      throw new InvalidAgentError('id', 'Agent id must be 24 lowercase hexadecimal characters');
+    }
+    const agent = await this.agents.findById(workspaceId, id);
+    if (!agent) {
+      throw new AgentNotFoundError(id);
+    }
+    return agent;
   }
 }

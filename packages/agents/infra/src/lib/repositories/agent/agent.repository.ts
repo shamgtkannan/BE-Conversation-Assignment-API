@@ -14,6 +14,22 @@ const isDuplicateEmail = (error: unknown): boolean => {
   return e?.code === DUPLICATE_KEY && e.keyPattern?.['email'] !== undefined;
 };
 
+/** The stored fields of an agent, as a plain (lean) document. */
+type StoredAgent = Pick<
+  AgentDo,
+  '_id' | 'workspaceId' | 'name' | 'email' | 'createdAt' | 'updatedAt'
+>;
+
+/** Maps a stored document to the plain entity the application layer knows. */
+const toEntity = (doc: StoredAgent): IAgentEntity => ({
+  id: doc._id.toHexString(),
+  workspaceId: doc.workspaceId,
+  name: doc.name,
+  email: doc.email,
+  createdAt: doc.createdAt,
+  updatedAt: doc.updatedAt,
+});
+
 /** {@link AgentRepository} backed by MongoDB through Mongoose. */
 @Injectable()
 export class MongooseAgentRepository implements AgentRepository {
@@ -22,12 +38,15 @@ export class MongooseAgentRepository implements AgentRepository {
     private readonly model: mongoose.Model<AgentDo>,
   ) {}
 
-  /** Finds one agent by id inside a workspace. Not implemented yet. */
+  /**
+   * Finds one agent by id inside a workspace. Filtering on `workspaceId` too
+   * means an agent of another workspace is simply not found. Served by `_id`.
+   */
   async findById(workspaceId: string, id: string): Promise<IAgentEntity | null> {
-    void workspaceId;
-    void id;
-    void this.model;
-    throw new Error('Not implemented');
+    const doc = await this.model
+      .findOne({ _id: new mongoose.Types.ObjectId(id), workspaceId })
+      .lean();
+    return doc ? toEntity(doc) : null;
   }
 
   /**
@@ -55,14 +74,7 @@ export class MongooseAgentRepository implements AgentRepository {
       .limit(request.fetchSize)
       .lean();
 
-    return docs.map((doc) => ({
-      id: doc._id.toHexString(),
-      workspaceId: doc.workspaceId,
-      name: doc.name,
-      email: doc.email,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
-    }));
+    return docs.map(toEntity);
   }
 
   /**

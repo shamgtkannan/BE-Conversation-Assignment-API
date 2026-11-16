@@ -1,4 +1,9 @@
-import { ConversationStatus, IConversationEntity } from './conversation.entity';
+import {
+  CONVERSATION_STATUSES,
+  ConversationStatus,
+  IConversationEntity,
+} from './conversation.entity';
+import { InvalidConversationError } from './exceptions/invalid-conversation.error';
 
 /** Values needed to create a new conversation. */
 export interface CreateConversationProps {
@@ -15,7 +20,7 @@ export interface CreateConversationProps {
 
 /**
  * A customer conversation. Created only through {@link Conversation.create},
- * which enforces the creation rules; not implemented yet.
+ * which enforces the creation rules.
  */
 export class Conversation implements IConversationEntity {
   private constructor(
@@ -30,8 +35,36 @@ export class Conversation implements IConversationEntity {
     readonly assignedBy?: string,
   ) {}
 
+  /**
+   * Creates a new, unassigned conversation.
+   *
+   * - The subject is trimmed and must not be blank.
+   * - The status defaults to `open` and must be `open` or `closed`.
+   * - `createdAt` and `updatedAt` both start at `now`.
+   *
+   * @throws {InvalidConversationError} when the subject or status breaks a rule.
+   */
   static create(props: CreateConversationProps): Conversation {
-    void props;
-    throw new Error('Not implemented');
+    const subject = props.subject.trim();
+    if (subject === '') {
+      throw new InvalidConversationError('subject', 'Conversation subject must not be blank');
+    }
+
+    const status = props.status ?? 'open';
+    if (!CONVERSATION_STATUSES.includes(status)) {
+      throw new InvalidConversationError(
+        'status',
+        `Conversation status must be one of: ${CONVERSATION_STATUSES.join(', ')}`,
+      );
+    }
+
+    return new Conversation(
+      props.id,
+      subject,
+      status,
+      props.workspaceId,
+      new Date(props.now),
+      new Date(props.now),
+    );
   }
 }

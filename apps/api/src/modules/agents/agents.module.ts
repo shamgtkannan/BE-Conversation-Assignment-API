@@ -5,6 +5,7 @@ import {
   CLOCK,
   Clock,
   CreateAgentUseCase,
+  GetAgentUseCase,
   ID_GENERATOR,
   IdGenerator,
   ListAgentsUseCase,
@@ -15,8 +16,8 @@ import { AgentsController } from './agents.controller';
 
 /**
  * Wires the agents feature: ports are bound to MongoDB adapters by
- * `AgentRepositoryModule`, and the use case, a plain class without Nest
- * decorators, is assembled here with `useFactory`.
+ * `AgentRepositoryModule`, and the use cases, plain classes without Nest
+ * decorators, are assembled here with `useFactory`.
  */
 @Module({
   imports: [AgentRepositoryModule],
@@ -32,6 +33,11 @@ import { AgentsController } from './agents.controller';
     {
       provide: ListAgentsUseCase,
       useFactory: (agents: AgentRepository) => new ListAgentsUseCase(agents),
+      inject: [AGENT_REPOSITORY],
+    },
+    {
+      provide: GetAgentUseCase,
+      useFactory: (agents: AgentRepository) => new GetAgentUseCase(agents),
       inject: [AGENT_REPOSITORY],
     },
   ],

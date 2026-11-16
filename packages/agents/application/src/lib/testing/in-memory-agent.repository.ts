@@ -27,6 +27,10 @@ export class InMemoryAgentRepository implements AgentRepository {
     this.saved.push(agent);
   }
 
+  async findById(workspaceId: string, id: string): Promise<IAgentEntity | null> {
+    return this.saved.find((a) => a.workspaceId === workspaceId && a.id === id) ?? null;
+  }
+
   async list(workspaceId: string, request: PageRequest): Promise<IAgentEntity[]> {
     const ordered = this.saved.filter((a) => a.workspaceId === workspaceId).sort(newestFirst);
     const { cursor, direction } = request;

@@ -21,6 +21,13 @@ export interface AgentRepository {
    * - `previous`: oldest first, only agents strictly newer than the cursor.
    */
   list(workspaceId: string, request: PageRequest): Promise<IAgentEntity[]>;
+
+  /**
+   * Finds one agent by id inside a workspace. Resolves to `null` when there is
+   * none, including when the id belongs to another workspace. Expects a
+   * well-formed id (see `isAgentId`); the use case checks that first.
+   */
+  findById(workspaceId: string, id: string): Promise<IAgentEntity | null>;
 }
 /** Injection token for {@link AgentRepository}. */
 export const AGENT_REPOSITORY = Symbol('AGENT_REPOSITORY');

@@ -22,6 +22,14 @@ export class MongooseAgentRepository implements AgentRepository {
     private readonly model: mongoose.Model<AgentDo>,
   ) {}
 
+  /** Finds one agent by id inside a workspace. Not implemented yet. */
+  async findById(workspaceId: string, id: string): Promise<IAgentEntity | null> {
+    void workspaceId;
+    void id;
+    void this.model;
+    throw new Error('Not implemented');
+  }
+
   /**
    * Reads one page of a workspace's agents (see the ordering contract on
    * {@link AgentRepository.list}). Both the sort and the cursor comparison use

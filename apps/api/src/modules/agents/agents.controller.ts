@@ -1,5 +1,13 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
-import { CreateAgentUseCase, ListAgentsUseCase } from 'agents-application';
+import {
+  Body,
+  Controller,
+  Get,
+  NotImplementedException,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { CreateAgentUseCase, GetAgentUseCase, ListAgentsUseCase } from 'agents-application';
 import { AuthContext } from '../../auth/auth-context';
 import { CurrentAuth } from '../../auth/current-auth.decorator';
 import {
@@ -17,7 +25,17 @@ export class AgentsController {
   constructor(
     private readonly createAgentUseCase: CreateAgentUseCase,
     private readonly listAgentsUseCase: ListAgentsUseCase,
+    private readonly getAgentUseCase: GetAgentUseCase,
   ) {}
+
+  /** `GET /agents/:id`: one agent of the caller's workspace. Not implemented yet. */
+  @Get(':id')
+  getOne(@Param('id') id: string, @CurrentAuth() auth: AuthContext): Promise<AgentResponse> {
+    void id;
+    void auth;
+    void this.getAgentUseCase;
+    throw new NotImplementedException();
+  }
 
   /**
    * `GET /agents`: one page of the caller's workspace, newest first (200).

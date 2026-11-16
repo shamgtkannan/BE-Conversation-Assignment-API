@@ -3,7 +3,7 @@
 Conversation Assignment REST API built with Nx, NestJS, Mongoose, Jest and MongoDB, following
 domain-driven design and hexagonal architecture, developed test-first (TDD).
 
-Implemented so far: mock authentication, `POST /agents` and `GET /agents`.
+Implemented so far: mock authentication, `POST /agents`, `GET /agents` and `GET /agents/:id`.
 
 ## Prerequisites
 
@@ -83,7 +83,7 @@ The API listens on http://localhost:3000. It refuses to start without `MONGODB_H
 | `MONGODB_DATABASE` | Database name | none (required) |
 | `MONGODB_REPLICA_SET` | Replica set name | none (required) |
 | `MONGODB_POOL_SIZE` | Connection pool size | `10` |
-| `MONGODB_TEST_HOSTS`, `MONGODB_TEST_REPLICA_SET`, `MONGODB_TEST_DATABASE` | Integration tests only. The database name must end in `_test`. | the compose setup, `assignment_test` |
+| `MONGODB_TEST_HOSTS`, `MONGODB_TEST_REPLICA_SET`, `MONGODB_TEST_DATABASE` | Integration tests only. The database name must end in `_test`; each suite adds its own suffix to it. | the compose setup, `assignment_test` |
 
 ## 5. Try it
 
@@ -114,6 +114,17 @@ The response is `{ items, hasNext, next, hasPrevious, previous }`. Pass a return
 `?next=<token>` for older agents or `?previous=<token>` for newer ones. `limit` is 1 to 100 (default 20).
 A bad limit or token returns `400`. All three roles may list.
 
+Read one agent by id (use an `id` from the responses above):
+
+```sh
+curl -i http://localhost:3000/agents/<id> \
+  -H 'x-user-id: user_123' -H 'x-workspace-id: workspace_1' -H 'x-role: agent'
+```
+
+Returns `200` with the agent. A malformed id (anything but 24 lowercase hex characters) returns `400`.
+An id that does not exist in your workspace returns `404`, and so does an id that belongs to another
+workspace, so one workspace cannot probe another's ids.
+
 Look at the stored document:
 
 ```sh
@@ -130,8 +141,9 @@ npx nx integration agents-infra    # repository against real MongoDB
 npx nx integration api             # whole API against real MongoDB
 ```
 
-The two `integration` targets need MongoDB running (step 3). They use the database `assignment_test`
-and drop it when finished.
+The two `integration` targets need MongoDB running (step 3). Each suite uses its own database
+(`assignment_agents_infra_test` and `assignment_api_test`, derived from `MONGODB_TEST_DATABASE`) and drops
+it when finished, so the suites are safe to run in parallel.
 
 ## Layout
 

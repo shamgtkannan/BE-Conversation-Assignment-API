@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  NotImplementedException,
-  Param,
-  Post,
-  Query,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CreateAgentUseCase, GetAgentUseCase, ListAgentsUseCase } from 'agents-application';
 import { AuthContext } from '../../auth/auth-context';
 import { CurrentAuth } from '../../auth/current-auth.decorator';
@@ -28,13 +20,18 @@ export class AgentsController {
     private readonly getAgentUseCase: GetAgentUseCase,
   ) {}
 
-  /** `GET /agents/:id`: one agent of the caller's workspace. Not implemented yet. */
+  /**
+   * `GET /agents/:id`: one agent of the caller's workspace (200). Any
+   * authenticated role may read. A malformed id is 400; an unknown id, or one
+   * from another workspace, is 404.
+   */
   @Get(':id')
-  getOne(@Param('id') id: string, @CurrentAuth() auth: AuthContext): Promise<AgentResponse> {
-    void id;
-    void auth;
-    void this.getAgentUseCase;
-    throw new NotImplementedException();
+  async getOne(
+    @Param('id') id: string,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<AgentResponse> {
+    const agent = await this.getAgentUseCase.execute({ workspaceId: auth.workspaceId, id });
+    return toAgentResponse(agent);
   }
 
   /**

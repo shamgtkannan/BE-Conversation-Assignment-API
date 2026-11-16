@@ -1,7 +1,11 @@
 import { INestApplication } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { CreateConversationCommand, CreateConversationUseCase } from 'conversations-application';
+import {
+  CreateConversationCommand,
+  CreateConversationUseCase,
+  GetConversationUseCase,
+} from 'conversations-application';
 import { IConversationEntity, InvalidConversationError } from 'conversations-domain';
 import { AddressInfo } from 'net';
 import { createValidationPipe } from '../../app/validation-pipe';
@@ -41,6 +45,7 @@ describe('POST /conversations', () => {
       controllers: [ConversationsController],
       providers: [
         { provide: CreateConversationUseCase, useValue: { execute } },
+        { provide: GetConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

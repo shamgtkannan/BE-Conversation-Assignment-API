@@ -5,6 +5,7 @@ import {
   Clock,
   ConversationRepository,
   CreateConversationUseCase,
+  GetConversationUseCase,
   ID_GENERATOR,
   IdGenerator,
 } from 'conversations-application';
@@ -27,6 +28,12 @@ import { ConversationsController } from './conversations.controller';
       useFactory: (conversations: ConversationRepository, ids: IdGenerator, clock: Clock) =>
         new CreateConversationUseCase(conversations, ids, clock),
       inject: [CONVERSATION_REPOSITORY, ID_GENERATOR, CLOCK],
+    },
+    {
+      provide: GetConversationUseCase,
+      useFactory: (conversations: ConversationRepository) =>
+        new GetConversationUseCase(conversations),
+      inject: [CONVERSATION_REPOSITORY],
     },
   ],
 })

@@ -1,6 +1,6 @@
 import { ArgumentsHost } from '@nestjs/common';
 import { FILTER_CATCH_EXCEPTIONS } from '@nestjs/common/constants';
-import { InvalidConversationError } from 'conversations-domain';
+import { ConversationNotFoundError, InvalidConversationError } from 'conversations-domain';
 import {
   AgentEmailAlreadyExistsError,
   AgentNotFoundError,
@@ -27,6 +27,7 @@ describe('DomainExceptionFilter', () => {
     ['an invalid agent', new InvalidAgentError('name', 'Name is blank'), 400, 'Bad Request'],
     ['an invalid page request', new InvalidPageRequestError('limit', 'Limit is out of range'), 400, 'Bad Request'],
     ['a missing agent', new AgentNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
+    ['a missing conversation', new ConversationNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
     ['a duplicate agent email', new AgentEmailAlreadyExistsError('ada@example.com'), 409, 'Conflict'],
   ])('answers %s with %i', (_label, exception, statusCode, error) => {
     const { host, status, json } = fakeHost();
@@ -53,13 +54,14 @@ describe('DomainExceptionFilter', () => {
     expect(caught).toEqual(
       expect.arrayContaining([
         InvalidConversationError,
+        ConversationNotFoundError,
         InvalidAgentError,
         InvalidPageRequestError,
         AgentNotFoundError,
         AgentEmailAlreadyExistsError,
       ]),
     );
-    expect(caught).toHaveLength(5);
+    expect(caught).toHaveLength(6);
     expect(caught).not.toContain(Error);
   });
 });

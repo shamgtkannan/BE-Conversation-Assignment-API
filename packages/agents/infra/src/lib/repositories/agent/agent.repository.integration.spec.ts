@@ -6,7 +6,7 @@
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AGENT_REPOSITORY, AgentRepository } from 'agents-application';
-import { Agent, AgentEmailAlreadyExistsError } from 'agents-domain';
+import { Agent, AgentEmailAlreadyExistsError, PageRequest, buildAgentPage } from 'agents-domain';
 import * as mongoose from 'mongoose';
 import * as os from 'os';
 import { AgentRepositoryModule } from './agent-repository.module';
@@ -121,5 +121,103 @@ describe('MongooseAgentRepository (real MongoDB)', () => {
     expect(indexes).toContainEqual(
       expect.objectContaining({ key: { workspaceId: 1, email: 1 }, unique: true }),
     );
+  });
+
+  describe('list', () => {
+    /** Agent `n`: a higher n is created later; `at` forces a creation time. */
+    const seed = (n: number, overrides: Partial<Parameters<typeof Agent.create>[0]> = {}) =>
+      repository.save(
+        newAgent({
+          id: n.toString(16).padStart(24, '0'),
+          name: `Agent ${n}`,
+          email: `agent${n}@example.com`,
+          now: new Date(Date.UTC(2026, 10, 13, 8, n)),
+          ...overrides,
+        }),
+      );
+    const page = (input: { limit?: number; next?: string; previous?: string }, ws = 'workspace_1') => {
+      const request = PageRequest.create(input);
+      return repository.list(ws, request).then((rows) => buildAgentPage(rows, request));
+    };
+    const names = (rows: { name: string }[]) => rows.map((r) => r.name);
+
+    it('returns a workspace newest first, as plain entities', async () => {
+      for (const n of [2, 1, 3]) await seed(n);
+
+      const rows = await repository.list('workspace_1', PageRequest.create({}));
+
+      expect(names(rows)).toEqual(['Agent 3', 'Agent 2', 'Agent 1']);
+      expect(rows[0]).toEqual({
+        id: (3).toString(16).padStart(24, '0'),
+        workspaceId: 'workspace_1',
+        name: 'Agent 3',
+        email: 'agent3@example.com',
+        createdAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
+        updatedAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
+      });
+    });
+
+    it('never returns another workspace\'s agents', async () => {
+      await seed(1);
+      await seed(2, { workspaceId: 'workspace_2' });
+
+      expect(names(await repository.list('workspace_1', PageRequest.create({})))).toEqual(['Agent 1']);
+      expect(await repository.list('workspace_3', PageRequest.create({}))).toEqual([]);
+    });
+
+    it('fetches at most limit + 1 rows', async () => {
+      for (const n of [1, 2, 3, 4, 5]) await seed(n);
+
+      const rows = await repository.list('workspace_1', PageRequest.create({ limit: 2 }));
+
+      expect(names(rows)).toEqual(['Agent 5', 'Agent 4', 'Agent 3']);
+    });
+
+    it('pages forward and back through every agent exactly once', async () => {
+      for (const n of [1, 2, 3, 4, 5]) await seed(n);
+
+      const first = await page({ limit: 2 });
+      const second = await page({ limit: 2, next: first.next as string });
+      const third = await page({ limit: 2, next: second.next as string });
+      expect([names(first.items), names(second.items), names(third.items)]).toEqual([
+        ['Agent 5', 'Agent 4'],
+        ['Agent 3', 'Agent 2'],
+        ['Agent 1'],
+      ]);
+      expect(third.hasNext).toBe(false);
+
+      const back = await page({ limit: 2, previous: third.previous as string });
+      expect(names(back.items)).toEqual(['Agent 3', 'Agent 2']);
+      expect(back.hasNext).toBe(true);
+      const backAgain = await page({ limit: 2, previous: back.previous as string });
+      expect(names(backAgain.items)).toEqual(['Agent 5', 'Agent 4']);
+      expect(backAgain.hasPrevious).toBe(false);
+    });
+
+    it('does not repeat or skip agents created at the same instant', async () => {
+      const sameTime = new Date(Date.UTC(2026, 10, 13, 9, 0));
+      for (const n of [1, 2, 3, 4]) await seed(n, { now: sameTime });
+
+      const seen: string[] = [];
+      let next: string | undefined;
+      do {
+        const result = await page({ limit: 1, next });
+        seen.push(...names(result.items));
+        next = result.next ?? undefined;
+      } while (next);
+
+      expect(seen).toEqual(['Agent 4', 'Agent 3', 'Agent 2', 'Agent 1']);
+    });
+
+    it('keeps a cursor from another workspace from revealing that workspace\'s agents', async () => {
+      for (const n of [1, 2, 3]) await seed(n);
+      for (const n of [4, 5, 6]) await seed(n, { workspaceId: 'workspace_2' });
+      const elsewhere = await page({ limit: 1 }, 'workspace_2');
+
+      const result = await page({ next: elsewhere.next as string });
+
+      expect(result.items.length).toBeGreaterThan(0);
+      expect(names(result.items).every((name) => ['Agent 1', 'Agent 2', 'Agent 3'].includes(name))).toBe(true);
+    });
   });
 });

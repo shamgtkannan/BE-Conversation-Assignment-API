@@ -17,8 +17,19 @@ export interface ConversationResponse {
   updatedAt: string;
 }
 
-/** Converts a domain conversation to its response shape. Not implemented yet. */
-export const toConversationResponse = (conversation: IConversationEntity): ConversationResponse => {
-  void conversation;
-  throw new Error('Not implemented');
-};
+/**
+ * Converts a domain conversation to its response shape. Listing every field
+ * keeps stray properties off the wire, and turns the domain's "absent"
+ * assignment fields into the explicit `null` the API contract promises.
+ */
+export const toConversationResponse = (conversation: IConversationEntity): ConversationResponse => ({
+  id: conversation.id,
+  subject: conversation.subject,
+  status: conversation.status,
+  workspaceId: conversation.workspaceId,
+  assignedAgentId: conversation.assignedAgentId ?? null,
+  assignedAt: conversation.assignedAt?.toISOString() ?? null,
+  assignedBy: conversation.assignedBy ?? null,
+  createdAt: conversation.createdAt.toISOString(),
+  updatedAt: conversation.updatedAt.toISOString(),
+});

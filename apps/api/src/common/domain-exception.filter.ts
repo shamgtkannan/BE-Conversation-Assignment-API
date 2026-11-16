@@ -5,6 +5,7 @@ import {
   InvalidAgentError,
   InvalidPageRequestError,
 } from 'agents-domain';
+import { InvalidConversationError } from 'conversations-domain';
 
 interface JsonResponse {
   status(code: number): { json(body: unknown): void };
@@ -12,6 +13,7 @@ interface JsonResponse {
 
 type DomainError =
   | InvalidAgentError
+  | InvalidConversationError
   | InvalidPageRequestError
   | AgentNotFoundError
   | AgentEmailAlreadyExistsError;
@@ -27,13 +29,20 @@ const statusOf = (exception: DomainError): [number, string] => {
  * Translates domain errors into HTTP responses so controllers never catch.
  * The body has the same shape as Nest's built-in HTTP errors.
  *
- * - {@link InvalidAgentError} and {@link InvalidPageRequestError} become 400.
+ * - {@link InvalidAgentError}, {@link InvalidConversationError} and
+ *   {@link InvalidPageRequestError} become 400.
  * - {@link AgentNotFoundError} becomes 404.
  * - {@link AgentEmailAlreadyExistsError} becomes 409.
  *
  * Anything else is not caught here and falls through to Nest's default 500.
  */
-@Catch(InvalidAgentError, InvalidPageRequestError, AgentNotFoundError, AgentEmailAlreadyExistsError)
+@Catch(
+  InvalidAgentError,
+  InvalidConversationError,
+  InvalidPageRequestError,
+  AgentNotFoundError,
+  AgentEmailAlreadyExistsError,
+)
 export class DomainExceptionFilter implements ExceptionFilter {
   catch(exception: DomainError, host: ArgumentsHost): void {
     const [statusCode, error] = statusOf(exception);

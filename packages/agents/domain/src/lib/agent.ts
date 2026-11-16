@@ -1,4 +1,6 @@
+import { isEmail } from 'class-validator';
 import { IAgentEntity } from './agent.entity';
+import { InvalidAgentError } from './exceptions/invalid-agent.error';
 
 /** Values needed to create a new agent. */
 export interface CreateAgentProps {
@@ -14,7 +16,7 @@ export interface CreateAgentProps {
 
 /**
  * A support agent. Created only through {@link Agent.create}, which enforces
- * the creation rules; not implemented yet.
+ * the creation rules.
  */
 export class Agent implements IAgentEntity {
   private constructor(
@@ -26,7 +28,35 @@ export class Agent implements IAgentEntity {
     readonly updatedAt: Date,
   ) {}
 
-  static create(_props: CreateAgentProps): Agent {
-    throw new Error('Not implemented');
+  /**
+   * Creates a new agent.
+   *
+   * - The name is trimmed and must not be blank.
+   * - The email is trimmed, lowercased and must be a valid address. Only case
+   *   and surrounding whitespace are normalised; dots and `+tags` are kept
+   *   because they can belong to distinct real mailboxes.
+   * - `createdAt` and `updatedAt` both start at `now`.
+   *
+   * @throws {InvalidAgentError} when the name or email breaks a rule.
+   */
+  static create(props: CreateAgentProps): Agent {
+    const name = props.name.trim();
+    if (name === '') {
+      throw new InvalidAgentError('name', 'Agent name must not be blank');
+    }
+
+    const email = props.email.trim().toLowerCase();
+    if (!isEmail(email)) {
+      throw new InvalidAgentError('email', 'Agent email must be a valid email address');
+    }
+
+    return new Agent(
+      props.id,
+      props.workspaceId,
+      name,
+      email,
+      new Date(props.now),
+      new Date(props.now),
+    );
   }
 }

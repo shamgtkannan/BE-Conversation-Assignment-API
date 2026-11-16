@@ -1,4 +1,9 @@
-import { IConversationEntity } from 'conversations-domain';
+import {
+  ConversationNotFoundError,
+  IConversationEntity,
+  InvalidConversationError,
+  isConversationId,
+} from 'conversations-domain';
 import { ConversationRepository } from './ports';
 
 /** Input of {@link GetConversationUseCase}. */
@@ -9,7 +14,7 @@ export interface GetConversationCommand {
 }
 
 /**
- * Reads one conversation of the caller's workspace by id. Not implemented yet.
+ * Reads one conversation of the caller's workspace by id.
  *
  * @throws InvalidConversationError when the id is malformed.
  * @throws ConversationNotFoundError when no such conversation exists in the workspace.
@@ -17,9 +22,18 @@ export interface GetConversationCommand {
 export class GetConversationUseCase {
   constructor(private readonly conversations: ConversationRepository) {}
 
-  execute(command: GetConversationCommand): Promise<IConversationEntity> {
-    void command;
-    void this.conversations;
-    throw new Error('Not implemented');
+  async execute({ workspaceId, id }: GetConversationCommand): Promise<IConversationEntity> {
+    // Check the format first, so a malformed id never reaches the database.
+    if (!isConversationId(id)) {
+      throw new InvalidConversationError(
+        'id',
+        'Conversation id must be 24 lowercase hexadecimal characters',
+      );
+    }
+    const conversation = await this.conversations.findById(workspaceId, id);
+    if (!conversation) {
+      throw new ConversationNotFoundError(id);
+    }
+    return conversation;
   }
 }

@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { IdGenerator } from 'conversations-application';
+import * as mongoose from 'mongoose';
 
-/** Generates MongoDB ObjectIds as 24-character hex strings. Not implemented yet. */
+/** Generates MongoDB ObjectIds as 24-character hex strings. */
 @Injectable()
 export class ObjectIdGenerator implements IdGenerator {
   next(): string {
-    throw new Error('Not implemented');
+    return new mongoose.Types.ObjectId().toHexString();
   }
 }

@@ -100,6 +100,10 @@ describe('ConversationDo schema', () => {
     expect(new ConversationModel(unassigned()).workspaceId).toBe('workspace_1');
   });
 
+  it('stores only the listed fields: no Mongoose version key', () => {
+    expect(ConversationDoSchema.get('versionKey')).toBe(false);
+  });
+
   it('keeps timestamps as Date values and does not auto-generate them', () => {
     expect(ConversationDoSchema.get('timestamps')).toBeFalsy();
     expect(new ConversationModel(unassigned()).createdAt).toBeInstanceOf(Date);

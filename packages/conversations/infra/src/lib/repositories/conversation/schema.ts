@@ -13,9 +13,11 @@ import * as mongoose from 'mongoose';
  * the two so the domain never sees Mongoose types.
  *
  * Soft-delete, domain-event and lock fields are omitted on purpose: there is no
- * delete endpoint, and concurrent-write protection is out of scope for now.
+ * delete endpoint, and concurrent-write protection is out of scope for now. For
+ * the same reason Mongoose's `__v` version key is switched off, so a stored
+ * document holds exactly the listed fields.
  */
-@Schema({ collection: 'conversations' })
+@Schema({ collection: 'conversations', versionKey: false })
 export class ConversationDo implements IConversationEntity {
   _id!: mongoose.Types.ObjectId;
 

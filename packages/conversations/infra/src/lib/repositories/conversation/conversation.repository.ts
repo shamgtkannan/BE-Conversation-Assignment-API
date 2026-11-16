@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { ConversationRepository } from 'conversations-application';
-import { Conversation } from 'conversations-domain';
+import { Conversation, IConversationEntity } from 'conversations-domain';
 import * as mongoose from 'mongoose';
 import { ConversationDo } from './schema';
 
@@ -44,6 +44,14 @@ export class MongooseConversationRepository implements ConversationRepository {
     @InjectModel(ConversationDo.name)
     private readonly model: mongoose.Model<ConversationDo>,
   ) {}
+
+  /** Finds one conversation by id inside a workspace. Not implemented yet. */
+  async findById(workspaceId: string, id: string): Promise<IConversationEntity | null> {
+    void workspaceId;
+    void id;
+    void this.model;
+    throw new Error('Not implemented');
+  }
 
   /**
    * Inserts the conversation, or replaces the stored one with the same id.

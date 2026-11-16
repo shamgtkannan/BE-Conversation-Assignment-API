@@ -1,4 +1,4 @@
-import { Conversation } from 'conversations-domain';
+import { Conversation, IConversationEntity } from 'conversations-domain';
 
 /**
  * Storage for conversations. Implemented in `conversations-infra`; the
@@ -11,6 +11,13 @@ export interface ConversationRepository {
    * reuse this method.
    */
   save(conversation: Conversation): Promise<void>;
+
+  /**
+   * Finds one conversation by id inside a workspace. Resolves to `null` when
+   * there is none, including when the id belongs to another workspace. Expects
+   * a well-formed id (see `isConversationId`); the use case checks that first.
+   */
+  findById(workspaceId: string, id: string): Promise<IConversationEntity | null>;
 }
 /** Injection token for {@link ConversationRepository}. */
 export const CONVERSATION_REPOSITORY = Symbol('CONVERSATION_REPOSITORY');

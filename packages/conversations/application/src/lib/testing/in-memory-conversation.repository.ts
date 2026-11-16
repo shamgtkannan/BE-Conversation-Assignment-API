@@ -1,9 +1,10 @@
-import { Conversation } from 'conversations-domain';
+import { Conversation, IConversationEntity } from 'conversations-domain';
 import { ConversationRepository } from '../ports';
 
 /**
  * Test double for {@link ConversationRepository}. Like the real one it inserts
- * a new conversation and replaces a stored one with the same id.
+ * a new conversation, replaces a stored one with the same id, and finds a
+ * conversation only inside its own workspace.
  */
 export class InMemoryConversationRepository implements ConversationRepository {
   readonly saved: Conversation[] = [];
@@ -15,5 +16,9 @@ export class InMemoryConversationRepository implements ConversationRepository {
     } else {
       this.saved.push(conversation);
     }
+  }
+
+  async findById(workspaceId: string, id: string): Promise<IConversationEntity | null> {
+    return this.saved.find((c) => c.workspaceId === workspaceId && c.id === id) ?? null;
   }
 }

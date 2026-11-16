@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { AgentRepository } from 'agents-application';
-import { Agent, AgentEmailAlreadyExistsError } from 'agents-domain';
+import { Agent, AgentEmailAlreadyExistsError, IAgentEntity, PageRequest } from 'agents-domain';
 import * as mongoose from 'mongoose';
 import { AgentDo } from './schema';
 
@@ -21,6 +21,14 @@ export class MongooseAgentRepository implements AgentRepository {
     @InjectModel(AgentDo.name)
     private readonly model: mongoose.Model<AgentDo>,
   ) {}
+
+  /** Reads one page of a workspace's agents. Not implemented yet. */
+  async list(workspaceId: string, request: PageRequest): Promise<IAgentEntity[]> {
+    void workspaceId;
+    void request;
+    void this.model;
+    throw new Error('Not implemented');
+  }
 
   /**
    * Inserts the agent. Uniqueness of `{ workspaceId, email }` is enforced by the

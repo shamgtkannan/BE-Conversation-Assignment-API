@@ -7,6 +7,7 @@ import {
   CreateAgentUseCase,
   ID_GENERATOR,
   IdGenerator,
+  ListAgentsUseCase,
 } from 'agents-application';
 import { AgentRepositoryModule } from 'agents-infra';
 import { SystemClock } from '../../common/system-clock';
@@ -27,6 +28,11 @@ import { AgentsController } from './agents.controller';
       useFactory: (agents: AgentRepository, ids: IdGenerator, clock: Clock) =>
         new CreateAgentUseCase(agents, ids, clock),
       inject: [AGENT_REPOSITORY, ID_GENERATOR, CLOCK],
+    },
+    {
+      provide: ListAgentsUseCase,
+      useFactory: (agents: AgentRepository) => new ListAgentsUseCase(agents),
+      inject: [AGENT_REPOSITORY],
     },
   ],
 })

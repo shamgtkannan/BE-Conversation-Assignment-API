@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { CreateAgentCommand, CreateAgentUseCase } from 'agents-application';
+import { CreateAgentCommand, CreateAgentUseCase, ListAgentsUseCase } from 'agents-application';
 import { AgentEmailAlreadyExistsError, IAgentEntity, InvalidAgentError } from 'agents-domain';
 import { AddressInfo } from 'net';
 import { createValidationPipe } from '../../app/validation-pipe';
@@ -41,6 +41,7 @@ describe('POST /agents', () => {
       controllers: [AgentsController],
       providers: [
         { provide: CreateAgentUseCase, useValue: { execute } },
+        { provide: ListAgentsUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

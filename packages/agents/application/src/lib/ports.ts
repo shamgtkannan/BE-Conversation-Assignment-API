@@ -1,4 +1,4 @@
-import { Agent } from 'agents-domain';
+import { Agent, IAgentEntity, PageRequest } from 'agents-domain';
 
 /**
  * Storage for agents. Implemented in `agents-infra`; the application layer only
@@ -12,6 +12,15 @@ export interface AgentRepository {
    *   agent's workspace.
    */
   save(agent: Agent): Promise<void>;
+
+  /**
+   * Reads the rows for one page of a workspace's agents, never more than
+   * `request.fetchSize`. Ordering contract (see `buildAgentPage`):
+   * - `first` and `next`: newest first (`createdAt` then id, both descending);
+   *   for `next` only agents strictly older than the cursor.
+   * - `previous`: oldest first, only agents strictly newer than the cursor.
+   */
+  list(workspaceId: string, request: PageRequest): Promise<IAgentEntity[]>;
 }
 /** Injection token for {@link AgentRepository}. */
 export const AGENT_REPOSITORY = Symbol('AGENT_REPOSITORY');

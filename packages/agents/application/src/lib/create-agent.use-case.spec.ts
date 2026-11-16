@@ -1,25 +1,7 @@
-import {
-  Agent,
-  AgentEmailAlreadyExistsError,
-  InvalidAgentError,
-} from 'agents-domain';
+import { AgentEmailAlreadyExistsError, InvalidAgentError } from 'agents-domain';
 import { CreateAgentUseCase } from './create-agent.use-case';
-import { AgentRepository, Clock, IdGenerator } from './ports';
-
-/** In-memory repository with the same uniqueness rule as the real index. */
-class InMemoryAgentRepository implements AgentRepository {
-  readonly saved: Agent[] = [];
-
-  async save(agent: Agent): Promise<void> {
-    const taken = this.saved.some(
-      (a) => a.workspaceId === agent.workspaceId && a.email === agent.email,
-    );
-    if (taken) {
-      throw new AgentEmailAlreadyExistsError(agent.email);
-    }
-    this.saved.push(agent);
-  }
-}
+import { Clock, IdGenerator } from './ports';
+import { InMemoryAgentRepository } from './testing/in-memory-agent.repository';
 
 const now = new Date('2026-11-13T08:30:00.000Z');
 const clock: Clock = { now: () => now };

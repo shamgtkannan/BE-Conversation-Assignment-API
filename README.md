@@ -3,7 +3,7 @@
 Conversation Assignment REST API built with Nx, NestJS, Mongoose, Jest and MongoDB, following
 domain-driven design and hexagonal architecture, developed test-first (TDD).
 
-Implemented so far: mock authentication, `POST /agents`, `GET /agents`, `GET /agents/:id` and `POST /conversations`.
+Implemented so far: mock authentication, `POST /agents`, `GET /agents`, `GET /agents/:id`, `POST /conversations` and `GET /conversations/:id`.
 
 ## Prerequisites
 
@@ -137,6 +137,17 @@ curl -i -X POST http://localhost:3000/conversations \
 Returns `201` with the conversation. `assignedAgentId`, `assignedAt` and `assignedBy` are `null` until an
 agent is assigned. A blank subject, an unknown status, or any extra field (such as `workspaceId`) returns `400`.
 All three roles may create conversations.
+
+Read one conversation by id (use the `id` from the response above):
+
+```sh
+curl -i http://localhost:3000/conversations/<id> \
+  -H 'x-user-id: user_123' -H 'x-workspace-id: workspace_1' -H 'x-role: agent'
+```
+
+Returns `200` with the conversation. A malformed id (anything but 24 lowercase hex characters) returns `400`.
+An id that does not exist in your workspace returns `404`, and so does an id that belongs to another
+workspace. All three roles may read.
 
 Look at the stored document:
 

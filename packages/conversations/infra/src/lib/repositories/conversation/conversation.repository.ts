@@ -37,6 +37,34 @@ const toDocument = (conversation: Conversation): StoredConversation => {
   return document;
 };
 
+/**
+ * Maps a stored document to the plain entity the application layer knows,
+ * listing every field explicitly. The three assignment fields are only set when
+ * the document has them, so an unassigned conversation keeps them absent (the
+ * domain's meaning of "unassigned"), never null.
+ */
+const toEntity = (doc: StoredConversation): IConversationEntity => {
+  const entity: IConversationEntity = {
+    id: doc._id.toHexString(),
+    workspaceId: doc.workspaceId,
+    subject: doc.subject,
+    status: doc.status,
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
+
+  if (doc.assignedAgentId != null) {
+    entity.assignedAgentId = doc.assignedAgentId;
+  }
+  if (doc.assignedAt != null) {
+    entity.assignedAt = doc.assignedAt;
+  }
+  if (doc.assignedBy != null) {
+    entity.assignedBy = doc.assignedBy;
+  }
+  return entity;
+};
+
 /** {@link ConversationRepository} backed by MongoDB through Mongoose. */
 @Injectable()
 export class MongooseConversationRepository implements ConversationRepository {
@@ -45,12 +73,16 @@ export class MongooseConversationRepository implements ConversationRepository {
     private readonly model: mongoose.Model<ConversationDo>,
   ) {}
 
-  /** Finds one conversation by id inside a workspace. Not implemented yet. */
+  /**
+   * Finds one conversation by id inside a workspace. Filtering on `workspaceId`
+   * too means a conversation of another workspace is simply not found. Served
+   * by the `_id` index.
+   */
   async findById(workspaceId: string, id: string): Promise<IConversationEntity | null> {
-    void workspaceId;
-    void id;
-    void this.model;
-    throw new Error('Not implemented');
+    const doc = await this.model
+      .findOne({ _id: new mongoose.Types.ObjectId(id), workspaceId })
+      .lean();
+    return doc ? toEntity(doc) : null;
   }
 
   /**

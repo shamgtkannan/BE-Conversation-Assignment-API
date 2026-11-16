@@ -5,7 +5,7 @@ import {
   InvalidAgentError,
   InvalidPageRequestError,
 } from 'agents-domain';
-import { InvalidConversationError } from 'conversations-domain';
+import { ConversationNotFoundError, InvalidConversationError } from 'conversations-domain';
 
 interface JsonResponse {
   status(code: number): { json(body: unknown): void };
@@ -16,11 +16,14 @@ type DomainError =
   | InvalidConversationError
   | InvalidPageRequestError
   | AgentNotFoundError
+  | ConversationNotFoundError
   | AgentEmailAlreadyExistsError;
 
 /** Maps each domain error to its HTTP status and the matching reason phrase. */
 const statusOf = (exception: DomainError): [number, string] => {
-  if (exception instanceof AgentNotFoundError) return [HttpStatus.NOT_FOUND, 'Not Found'];
+  if (exception instanceof AgentNotFoundError || exception instanceof ConversationNotFoundError) {
+    return [HttpStatus.NOT_FOUND, 'Not Found'];
+  }
   if (exception instanceof AgentEmailAlreadyExistsError) return [HttpStatus.CONFLICT, 'Conflict'];
   return [HttpStatus.BAD_REQUEST, 'Bad Request'];
 };
@@ -31,7 +34,7 @@ const statusOf = (exception: DomainError): [number, string] => {
  *
  * - {@link InvalidAgentError}, {@link InvalidConversationError} and
  *   {@link InvalidPageRequestError} become 400.
- * - {@link AgentNotFoundError} becomes 404.
+ * - {@link AgentNotFoundError} and {@link ConversationNotFoundError} become 404.
  * - {@link AgentEmailAlreadyExistsError} becomes 409.
  *
  * Anything else is not caught here and falls through to Nest's default 500.
@@ -41,6 +44,7 @@ const statusOf = (exception: DomainError): [number, string] => {
   InvalidConversationError,
   InvalidPageRequestError,
   AgentNotFoundError,
+  ConversationNotFoundError,
   AgentEmailAlreadyExistsError,
 )
 export class DomainExceptionFilter implements ExceptionFilter {

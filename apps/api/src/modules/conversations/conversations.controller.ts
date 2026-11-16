@@ -1,4 +1,4 @@
-import { Body, Controller, Get, NotImplementedException, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { CreateConversationUseCase, GetConversationUseCase } from 'conversations-application';
 import { AuthContext } from '../../auth/auth-context';
 import { CurrentAuth } from '../../auth/current-auth.decorator';
@@ -13,16 +13,21 @@ export class ConversationsController {
     private readonly getConversationUseCase: GetConversationUseCase,
   ) {}
 
-  /** `GET /conversations/:id`: one conversation of the caller's workspace. Not implemented yet. */
+  /**
+   * `GET /conversations/:id`: one conversation of the caller's workspace (200).
+   * Any authenticated role may read. A malformed id is 400; an unknown id, or one
+   * from another workspace, is 404.
+   */
   @Get(':id')
-  getOne(
+  async getOne(
     @Param('id') id: string,
     @CurrentAuth() auth: AuthContext,
   ): Promise<ConversationResponse> {
-    void id;
-    void auth;
-    void this.getConversationUseCase;
-    throw new NotImplementedException();
+    const conversation = await this.getConversationUseCase.execute({
+      workspaceId: auth.workspaceId,
+      id,
+    });
+    return toConversationResponse(conversation);
   }
 
   /**

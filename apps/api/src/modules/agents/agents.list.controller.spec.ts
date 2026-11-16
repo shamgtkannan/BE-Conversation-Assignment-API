@@ -1,7 +1,12 @@
 import { INestApplication } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { CreateAgentUseCase, ListAgentsCommand, ListAgentsUseCase } from 'agents-application';
+import {
+  CreateAgentUseCase,
+  GetAgentUseCase,
+  ListAgentsCommand,
+  ListAgentsUseCase,
+} from 'agents-application';
 import { AgentPage, IAgentEntity, InvalidPageRequestError } from 'agents-domain';
 import { AddressInfo } from 'net';
 import { createValidationPipe } from '../../app/validation-pipe';
@@ -46,6 +51,7 @@ describe('GET /agents', () => {
       providers: [
         { provide: ListAgentsUseCase, useValue: { execute } },
         { provide: CreateAgentUseCase, useValue: { execute: jest.fn() } },
+        { provide: GetAgentUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

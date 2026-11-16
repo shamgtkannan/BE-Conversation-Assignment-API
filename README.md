@@ -3,7 +3,7 @@
 Conversation Assignment REST API built with Nx, NestJS, Mongoose, Jest and MongoDB, following
 domain-driven design and hexagonal architecture, developed test-first (TDD).
 
-Implemented so far: mock authentication and `POST /agents`.
+Implemented so far: mock authentication, `POST /agents` and `GET /agents`.
 
 ## Prerequisites
 
@@ -102,6 +102,17 @@ curl -i -X POST http://localhost:3000/agents \
 Expected: `201` with `{ id, name, email: "ada@example.com", workspaceId, createdAt, updatedAt }`.
 Sending the same email again in the same workspace returns `409`; an invalid body returns `400`;
 missing headers return `401`.
+
+List the workspace's agents, newest first, two per page:
+
+```sh
+curl -s 'http://localhost:3000/agents?limit=2' \
+  -H 'x-user-id: user_123' -H 'x-workspace-id: workspace_1' -H 'x-role: agent'
+```
+
+The response is `{ items, hasNext, next, hasPrevious, previous }`. Pass a returned token back as
+`?next=<token>` for older agents or `?previous=<token>` for newer ones. `limit` is 1 to 100 (default 20).
+A bad limit or token returns `400`. All three roles may list.
 
 Look at the stored document:
 

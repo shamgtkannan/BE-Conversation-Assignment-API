@@ -19,12 +19,6 @@ export interface AgentPageResponse {
   previous: string | null;
 }
 
-/** Converts a page of domain agents to its response shape. Not implemented yet. */
-export const toAgentPageResponse = (page: AgentPage): AgentPageResponse => {
-  void page;
-  throw new Error('Not implemented');
-};
-
 /** Converts a domain agent to its response shape. */
 export const toAgentResponse = (agent: IAgentEntity): AgentResponse => ({
   id: agent.id,
@@ -33,4 +27,13 @@ export const toAgentResponse = (agent: IAgentEntity): AgentResponse => ({
   workspaceId: agent.workspaceId,
   createdAt: agent.createdAt.toISOString(),
   updatedAt: agent.updatedAt.toISOString(),
+});
+
+/** Converts a page of domain agents to its response shape. */
+export const toAgentPageResponse = (page: AgentPage): AgentPageResponse => ({
+  items: page.items.map(toAgentResponse),
+  hasNext: page.hasNext,
+  next: page.next,
+  hasPrevious: page.hasPrevious,
+  previous: page.previous,
 });

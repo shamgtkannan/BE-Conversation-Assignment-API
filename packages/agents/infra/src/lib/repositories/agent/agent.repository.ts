@@ -22,12 +22,39 @@ export class MongooseAgentRepository implements AgentRepository {
     private readonly model: mongoose.Model<AgentDo>,
   ) {}
 
-  /** Reads one page of a workspace's agents. Not implemented yet. */
+  /**
+   * Reads one page of a workspace's agents (see the ordering contract on
+   * {@link AgentRepository.list}). Both the sort and the cursor comparison use
+   * `createdAt` then `_id`, so agents created at the same instant are neither
+   * skipped nor repeated. Served by the `{ workspaceId, createdAt, _id }` index.
+   */
   async list(workspaceId: string, request: PageRequest): Promise<IAgentEntity[]> {
-    void workspaceId;
-    void request;
-    void this.model;
-    throw new Error('Not implemented');
+    const backward = request.direction === 'previous';
+    const order = backward ? 1 : -1;
+
+    const filter: mongoose.QueryFilter<AgentDo> = { workspaceId };
+    if (request.cursor) {
+      const { createdAt, id } = request.cursor;
+      const _id = new mongoose.Types.ObjectId(id);
+      filter.$or = backward
+        ? [{ createdAt: { $gt: createdAt } }, { createdAt, _id: { $gt: _id } }]
+        : [{ createdAt: { $lt: createdAt } }, { createdAt, _id: { $lt: _id } }];
+    }
+
+    const docs = await this.model
+      .find(filter)
+      .sort({ createdAt: order, _id: order })
+      .limit(request.fetchSize)
+      .lean();
+
+    return docs.map((doc) => ({
+      id: doc._id.toHexString(),
+      workspaceId: doc.workspaceId,
+      name: doc.name,
+      email: doc.email,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    }));
   }
 
   /**

@@ -1,0 +1,26 @@
+{
+  "name": "conversations-application",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/conversations/application/src",
+  "projectType": "library",
+  "tags": [
+    "scope:conversations",
+    "layer:application"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/packages/conversations/application",
+        "main": "packages/conversations/application/src/index.ts",
+        "tsConfig": "packages/conversations/application/tsconfig.lib.json",
+        "assets": [
+          "packages/conversations/application/*.md"
+        ]
+      }
+    }
+  }
+}

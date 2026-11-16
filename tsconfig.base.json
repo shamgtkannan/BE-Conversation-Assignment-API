@@ -1,0 +1,45 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "bundler",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "es2022",
+    "module": "esnext",
+    "lib": [
+      "es2020",
+      "dom"
+    ],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "strict": true,
+    "paths": {
+      "agents-domain": [
+        "./packages/agents/domain/src/index.ts"
+      ],
+      "agents-application": [
+        "./packages/agents/application/src/index.ts"
+      ],
+      "agents-infra": [
+        "./packages/agents/infra/src/index.ts"
+      ],
+      "conversations-domain": [
+        "./packages/conversations/domain/src/index.ts"
+      ],
+      "conversations-application": [
+        "./packages/conversations/application/src/index.ts"
+      ],
+      "conversations-infra": [
+        "./packages/conversations/infra/src/index.ts"
+      ]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "tmp"
+  ]
+}

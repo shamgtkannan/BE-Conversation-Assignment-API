@@ -1,0 +1,12 @@
+{
+  "name": "conversations-infra",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/conversations/infra/src",
+  "projectType": "library",
+  "tags": [
+    "scope:conversations",
+    "layer:infra"
+  ],
+  "// targets": "to see all targets run: nx show project conversations-infra --web",
+  "targets": {}
+}

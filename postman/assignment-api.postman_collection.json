@@ -1,0 +1,2918 @@
+{
+  "info": {
+    "_postman_id": "6b1c2a4e-3f1d-4b7e-9a52-0c8d5e7f1a90",
+    "name": "Conversation Assignment API",
+    "description": "Postman collection for the Conversation Assignment API (NestJS and MongoDB).\n\n**Before you run it**\n1. Start MongoDB and the API (see the README): `docker compose up -d --wait`, then `npx nx serve api`.\n2. Import this file into Postman.\n3. Run the whole collection with the Collection Runner, in order. Later folders use the ids that earlier requests save as collection variables.\n\n**Authentication.** There is no login. Each request sends three headers: `x-user-id`, `x-workspace-id` and `x-role`, taken from the variables below. Requests that need another role or workspace override them.\n\n**Variables.** The defaults below are collection variables. For a different host, user or workspace, import `postman/local.postman_environment.json`, edit its values and select it: an environment value overrides the collection default, so nothing in the collection needs changing.\n\n| Variable | Default | Meaning |\n|---|---|---|\n| `baseUrl` | `http://localhost:3000` | Where the API runs |\n| `userId` | `user_123` | The acting user, recorded as `assignedBy` |\n| `workspaceId` | `workspace_1` | The caller's workspace |\n| `role` | `manager` | `admin`, `manager` or `agent` |\n| `adminUserId` | `user_admin` | A second user, used for the admin requests |\n| `otherWorkspaceId` | `workspace_2` | A different workspace, for isolation checks |\n| `unknownId` | `aaaaaaaaaaaaaaaaaaaaaaaa` | A well-formed id that does not exist |\n\nThe remaining variables (`agentId`, `agent2Id`, `foreignAgentId`, `conversationId`, `closedConversationId`, `nextToken` and the others) are filled in by test scripts while the collection runs. Agent emails are generated per run, so the collection can be run repeatedly against the same database.\n\n**Ids.** Ids are 24-character hex strings. The specification's examples such as `conv_123` are rejected with 400, and some requests send them on purpose.\n\n**Command line.** `npx newman run postman/assignment-api.postman_collection.json` runs every request and its tests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Missing auth headers (401)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "description": "No `x-user-id`, `x-workspace-id` or `x-role` header."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 401 Unauthorized\", () => { pm.expect(body.statusCode).to.eql(401); pm.expect(body.error).to.eql(\"Unauthorized\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown role (401)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "superuser"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "description": "`x-role` must be `admin`, `manager` or `agent`."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 401 Unauthorized\", () => { pm.expect(body.statusCode).to.eql(401); pm.expect(body.error).to.eql(\"Unauthorized\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "The mock guard reads three headers. A missing header or an unknown role is rejected with 401 before anything else runs."
+    },
+    {
+      "name": "Agents",
+      "item": [
+        {
+          "name": "Create agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ada Lovelace\",\n  \"email\": \"{{agentEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The email is trimmed and lower-cased, and must be unique within the workspace. The pre-request script makes it unique per run, in mixed case so the lower-casing is visible."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"agentEmail\", \"Ada.\" + Date.now() + \"@Example.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"shape and normalised email\", () => {",
+                  "  pm.expect(body.id).to.match(/^[0-9a-f]{24}$/);",
+                  "  pm.expect(body.email).to.eql(pm.collectionVariables.get(\"agentEmail\").toLowerCase());",
+                  "  pm.expect(body.workspaceId).to.eql(pm.collectionVariables.get(\"workspaceId\"));",
+                  "  pm.expect(body.createdAt).to.match(/Z$/);",
+                  "});",
+                  "pm.collectionVariables.set(\"agentId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create agent, duplicate email (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ada Again\",\n  \"email\": \"{{agentEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The same email in the same workspace, enforced by a unique index."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 409\", () => pm.response.to.have.status(409));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 409 Conflict\", () => { pm.expect(body.statusCode).to.eql(409); pm.expect(body.error).to.eql(\"Conflict\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create agent, invalid email (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nobody\",\n  \"email\": \"not-an-email\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create agent, missing name (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"noname@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create agent, workspaceId in body (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sneaky\",\n  \"email\": \"sneaky@example.com\",\n  \"workspaceId\": \"workspace_9\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The workspace always comes from the auth headers, so an extra body field is rejected."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create second agent",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Grace Hopper\",\n  \"email\": \"{{agent2Email}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Used later to reassign the conversation."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"agent2Email\", \"grace.\" + Date.now() + \"@example.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"agent2Id\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create agent in another workspace",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{otherWorkspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Eve Elsewhere\",\n  \"email\": \"{{foreignEmail}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "An agent in a different workspace, used to prove cross-workspace assignment is rejected."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"foreignEmail\", \"eve.\" + Date.now() + \"@example.com\");"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"belongs to the other workspace\", () => pm.expect(body.workspaceId).to.eql(pm.collectionVariables.get(\"otherWorkspaceId\")));",
+                  "pm.collectionVariables.set(\"foreignAgentId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"a page of agents\", () => {",
+                  "  pm.expect(body.items).to.be.an(\"array\").that.is.not.empty;",
+                  "  pm.expect(body.items[0]).to.include.all.keys(\"id\", \"name\", \"email\", \"workspaceId\", \"createdAt\", \"updatedAt\");",
+                  "  pm.expect(body).to.include.all.keys(\"hasNext\", \"next\", \"hasPrevious\", \"previous\");",
+                  "  body.items.forEach(a => pm.expect(a.workspaceId).to.eql(pm.collectionVariables.get(\"workspaceId\")));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents, first page (limit 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents?limit=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "Newest first. `next` is an opaque token for the following page."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"one item and a next token\", () => { pm.expect(body.items).to.have.length(1); pm.expect(body.hasNext).to.be.true; pm.expect(body.hasPrevious).to.be.false; });",
+                  "pm.collectionVariables.set(\"pageOneAgentId\", body.items[0].id);",
+                  "pm.collectionVariables.set(\"nextToken\", body.next);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents, next page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents?limit=1&next={{nextToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                },
+                {
+                  "key": "next",
+                  "value": "{{nextToken}}"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"a different agent, with a way back\", () => { pm.expect(body.items).to.have.length(1); pm.expect(body.items[0].id).to.not.eql(pm.collectionVariables.get(\"pageOneAgentId\")); pm.expect(body.hasPrevious).to.be.true; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents, limit out of range (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents?limit=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List agents, bad cursor (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents?next=not-a-token!",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents"
+              ],
+              "query": [
+                {
+                  "key": "next",
+                  "value": "not-a-token!"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get agent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents/{{agentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents",
+                "{{agentId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the requested agent\", () => pm.expect(body.id).to.eql(pm.collectionVariables.get(\"agentId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get agent, unknown id (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents/{{unknownId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents",
+                "{{unknownId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get agent, malformed id (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents/agent_456",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents",
+                "agent_456"
+              ]
+            },
+            "description": "Ids are 24-character hex strings, so the spec's example id `agent_456` is rejected."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get agent of another workspace (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/agents/{{foreignAgentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "agents",
+                "{{foreignAgentId}}"
+              ]
+            },
+            "description": "Another workspace's agent looks exactly like a missing one."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Conversations",
+      "item": [
+        {
+          "name": "Create conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Unable to log in\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"open and unassigned, with null assignment fields\", () => {",
+                  "  pm.expect(body).to.include.all.keys(\"id\", \"subject\", \"status\", \"workspaceId\", \"assignedAgentId\", \"assignedAt\", \"assignedBy\", \"createdAt\", \"updatedAt\");",
+                  "  pm.expect(body.id).to.match(/^[0-9a-f]{24}$/);",
+                  "  pm.expect(body.status).to.eql(\"open\");",
+                  "  pm.expect(body.assignedAgentId).to.be.null; pm.expect(body.assignedAt).to.be.null; pm.expect(body.assignedBy).to.be.null;",
+                  "});",
+                  "pm.collectionVariables.set(\"conversationId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create closed conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Resolved last week\",\n  \"status\": \"closed\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Closed conversations cannot be assigned."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 201\", () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"closed\", () => pm.expect(body.status).to.eql(\"closed\"));",
+                  "pm.collectionVariables.set(\"closedConversationId\", body.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create conversation, blank subject (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"   \"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create conversation, unknown status (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subject\": \"Pending?\",\n  \"status\": \"pending\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"a page of conversations\", () => {",
+                  "  pm.expect(body.items).to.be.an(\"array\").that.is.not.empty;",
+                  "  pm.expect(body.items[0]).to.include.all.keys(\"id\", \"subject\", \"status\", \"workspaceId\", \"assignedAgentId\", \"assignedAt\", \"assignedBy\", \"createdAt\", \"updatedAt\");",
+                  "  body.items.forEach(c => pm.expect(c.workspaceId).to.eql(pm.collectionVariables.get(\"workspaceId\")));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations, status closed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?status=closed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "closed"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"only closed\", () => { pm.expect(body.items).to.not.be.empty; body.items.forEach(c => pm.expect(c.status).to.eql(\"closed\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations, paging (limit 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?limit=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"one item and a next token\", () => { pm.expect(body.items).to.have.length(1); pm.expect(body.hasNext).to.be.true; });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations, unknown status (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?status=pending",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "pending"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations, malformed assignedAgentId (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?assignedAgentId=agent_456",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "assignedAgentId",
+                  "value": "agent_456"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get conversation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"the requested conversation\", () => pm.expect(body.id).to.eql(pm.collectionVariables.get(\"conversationId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get conversation, unknown id (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{unknownId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{unknownId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get conversation, malformed id (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/conv_123",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "conv_123"
+              ]
+            },
+            "description": "The spec's example id `conv_123` is rejected: ids are 24-character hex strings."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get conversation of another workspace (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{otherWorkspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Assignment",
+      "item": [
+        {
+          "name": "Assign agent",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`assignedBy` and the workspace come from the auth headers, never from the body."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"assigned, recording who and when\", () => {",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get(\"conversationId\"));",
+                  "  pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agentId\"));",
+                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "  pm.expect(body.assignedAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/);",
+                  "});",
+                  "pm.collectionVariables.set(\"assignedAt\", body.assignedAt);",
+                  "pm.collectionVariables.set(\"assignedUpdatedAt\", body.updatedAt);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign the same agent again (no change)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Even when an admin repeats the assignment, `assignedAt`, `assignedBy` and `updatedAt` do not change."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"assignment untouched\", () => {",
+                  "  pm.expect(body.assignedAt).to.eql(pm.collectionVariables.get(\"assignedAt\"));",
+                  "  pm.expect(body.updatedAt).to.eql(pm.collectionVariables.get(\"assignedUpdatedAt\"));",
+                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"userId\"));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List conversations by assigned agent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations?assignedAgentId={{agentId}}&status=open",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations"
+              ],
+              "query": [
+                {
+                  "key": "assignedAgentId",
+                  "value": "{{agentId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "open"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"only conversations of that agent\", () => { pm.expect(body.items.map(c => c.id)).to.include(pm.collectionVariables.get(\"conversationId\")); body.items.forEach(c => pm.expect(c.assignedAgentId).to.eql(pm.collectionVariables.get(\"agentId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Reassign to another agent (as admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{adminUserId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "admin"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agent2Id}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Admins and managers may assign. The new agent, time and user replace the previous ones."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const t = Date.now(); while (Date.now() - t < 25) {} // let the clock advance so the new assignedAt differs"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"previous assignment replaced\", () => {",
+                  "  pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agent2Id\"));",
+                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"adminUserId\"));",
+                  "  pm.expect(body.assignedAt).to.not.eql(pm.collectionVariables.get(\"assignedAt\"));",
+                  "});",
+                  "pm.collectionVariables.set(\"reassignedUpdatedAt\", body.updatedAt);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get conversation shows the reassignment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"persisted\", () => pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agent2Id\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign as the agent role (403)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "agent"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Only admins and managers may assign or unassign."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 403\", () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 403 Forbidden\", () => { pm.expect(body.statusCode).to.eql(403); pm.expect(body.error).to.eql(\"Forbidden\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign nonexistent agent (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{unknownId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign nonexistent conversation (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{unknownId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{unknownId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign an agent of another workspace (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{foreignAgentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Cross-workspace assignment is rejected as if the agent did not exist."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign in another workspace (404)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{otherWorkspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{foreignAgentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "The conversation belongs to the main workspace, so another workspace cannot see or change it."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign a closed conversation (409)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{closedConversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{closedConversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 409\", () => pm.response.to.have.status(409));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 409 Conflict\", () => { pm.expect(body.statusCode).to.eql(409); pm.expect(body.error).to.eql(\"Conflict\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign, empty body (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign, agentId is not an id (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"agent_456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign, assignedBy in body (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\",\n  \"assignedBy\": \"someone_else\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`assignedBy` is derived from the auth headers, so it is rejected in the body."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign, conversation id is not an id (400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/conv_123/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "conv_123",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign without auth headers (401)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 401\", () => pm.response.to.have.status(401));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 401 Unauthorized\", () => { pm.expect(body.statusCode).to.eql(401); pm.expect(body.error).to.eql(\"Unauthorized\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign as the agent role (403)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "agent"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 403\", () => pm.response.to.have.status(403));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 403 Forbidden\", () => { pm.expect(body.statusCode).to.eql(403); pm.expect(body.error).to.eql(\"Forbidden\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "description": "`assignedAgentId`, `assignedAt` and `assignedBy` are cleared. They are `null` here and absent in the database."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"assignment cleared\", () => {",
+                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get(\"conversationId\"));",
+                  "  pm.expect(body.assignedAgentId).to.be.null; pm.expect(body.assignedAt).to.be.null; pm.expect(body.assignedBy).to.be.null;",
+                  "});",
+                  "pm.collectionVariables.set(\"unassignedUpdatedAt\", body.updatedAt);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign again (no change)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"nothing changed\", () => { pm.expect(body.assignedAgentId).to.be.null; pm.expect(body.updatedAt).to.eql(pm.collectionVariables.get(\"unassignedUpdatedAt\")); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assign again after unassigning",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agentId\": \"{{agentId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"assigned again\", () => pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agentId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign nonexistent conversation (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{unknownId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{unknownId}}",
+                "assignment"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign in another workspace (404)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{otherWorkspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 404\", () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 404 Not Found\", () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql(\"Not Found\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unassign, conversation id is not an id (400)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/conv_123/assignment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "conv_123",
+                "assignment"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responds 400\", () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test(\"error body is 400 Bad Request\", () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql(\"Bad Request\"); pm.expect(body).to.have.property(\"message\"); });"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Run in order: later requests use the agent and conversation created earlier. The error cases check each rule from the specification: role, existence, workspace scoping and closed conversations."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "userId",
+      "value": "user_123",
+      "type": "string"
+    },
+    {
+      "key": "workspaceId",
+      "value": "workspace_1",
+      "type": "string"
+    },
+    {
+      "key": "role",
+      "value": "manager",
+      "type": "string"
+    },
+    {
+      "key": "adminUserId",
+      "value": "user_admin",
+      "type": "string"
+    },
+    {
+      "key": "otherWorkspaceId",
+      "value": "workspace_2",
+      "type": "string"
+    },
+    {
+      "key": "unknownId",
+      "value": "aaaaaaaaaaaaaaaaaaaaaaaa",
+      "type": "string"
+    }
+  ]
+}

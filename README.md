@@ -97,6 +97,18 @@ The API reads `.env` from the working directory. Variables already set in the en
 
 ## API reference
 
+### Postman collection
+
+`postman/assignment-api.postman_collection.json` has a request for every endpoint, 54 in all, grouped as Authentication, Agents, Conversations and Assignment. Each request has test scripts that check the status code and the response. The Assignment folder covers every rule in the specification: valid assignment, reassignment, the same agent twice, unassigning, an unknown agent or conversation, another workspace, a closed conversation, the `agent` role, and invalid bodies.
+
+1. Start MongoDB and the API (steps 2 and 3 above).
+2. In Postman, choose Import and select the file.
+3. Run the collection with the Collection Runner, in order. Requests save the ids they create as collection variables, and agent emails are generated per run, so it can be run again against the same database.
+
+The settings (`baseUrl`, `userId`, `workspaceId`, `role` and a few more) have defaults on the collection's Variables tab, so importing the collection alone works. To point it elsewhere, also import `postman/local.postman_environment.json`, edit its values and select it in Postman: its values override the collection's defaults. With the command line runner, `npx newman run postman/assignment-api.postman_collection.json -e postman/local.postman_environment.json` does the same.
+
+The `curl` examples below show the same calls.
+
 ### Authentication (mock)
 
 There is no login. Every request carries three headers that stand in for real authentication:
@@ -325,4 +337,3 @@ MongoDB indexes, declared on the schemas:
 - **Bonus 2, Kafka event.** `conversation.assigned.v1` is not published. To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
 - **Bonus 3, concurrency.** Two simultaneous assignments of one conversation are not guarded, so the last write wins. A conditional update on `updatedAt` (or a version field) would detect the clash.
 - **Real authentication.** Only the mock header guard exists.
-- **A Postman collection.** The `curl` examples above are the API examples.

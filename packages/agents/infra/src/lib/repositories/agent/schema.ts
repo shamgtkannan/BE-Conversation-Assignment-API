@@ -9,9 +9,11 @@ import { IAgentEntity } from 'agents-domain';
  * two so the domain never sees Mongoose types.
  *
  * Soft-delete, domain-event and lock fields are omitted on purpose: agents are
- * only created and read, so there are no later mutations to guard.
+ * only created and read, so there are no later mutations to guard. Mongoose's
+ * `__v` version key is switched off for the same reason, so a stored document
+ * holds exactly the listed fields.
  */
-@Schema({ collection: 'agents' })
+@Schema({ collection: 'agents', versionKey: false })
 export class AgentDo implements IAgentEntity {
   _id!: mongoose.Types.ObjectId;
 

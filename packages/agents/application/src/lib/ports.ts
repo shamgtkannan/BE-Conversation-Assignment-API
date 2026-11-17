@@ -16,7 +16,8 @@ export interface AgentRepository {
 
   /**
    * Reads the rows for one page of a workspace's agents, never more than
-   * `request.fetchSize`. Ordering contract (see `buildAgentPage`):
+   * `request.fetchSize`. Ordering contract (the page is
+   * built from these rows by `buildPage` in `@shared/core`):
    * - `first` and `next`: newest first (`createdAt` then id, both descending);
    *   for `next` only agents strictly older than the cursor.
    * - `previous`: oldest first, only agents strictly newer than the cursor.

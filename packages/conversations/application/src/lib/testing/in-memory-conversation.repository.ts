@@ -1,5 +1,6 @@
+import { PageRequest } from '@shared/core';
 import { Conversation, IConversationEntity } from 'conversations-domain';
-import { ConversationRepository } from '../ports';
+import { ConversationFilter, ConversationRepository } from '../ports';
 
 /**
  * Test double for {@link ConversationRepository}. Like the real one it inserts
@@ -20,5 +21,13 @@ export class InMemoryConversationRepository implements ConversationRepository {
 
   async findById(workspaceId: string, id: string): Promise<IConversationEntity | null> {
     return this.saved.find((c) => c.workspaceId === workspaceId && c.id === id) ?? null;
+  }
+
+  async list(
+    _workspaceId: string,
+    _filter: ConversationFilter,
+    _request: PageRequest,
+  ): Promise<IConversationEntity[]> {
+    throw new Error('not implemented');
   }
 }

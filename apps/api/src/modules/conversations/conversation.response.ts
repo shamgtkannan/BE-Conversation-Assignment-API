@@ -1,3 +1,4 @@
+import { Page } from '@shared/core';
 import { ConversationStatus, IConversationEntity } from 'conversations-domain';
 
 /**
@@ -33,3 +34,19 @@ export const toConversationResponse = (conversation: IConversationEntity): Conve
   createdAt: conversation.createdAt.toISOString(),
   updatedAt: conversation.updatedAt.toISOString(),
 });
+
+/** JSON shape of `GET /conversations`: one page with opaque tokens to move on. */
+export interface ConversationPageResponse {
+  items: ConversationResponse[];
+  hasNext: boolean;
+  next: string | null;
+  hasPrevious: boolean;
+  previous: string | null;
+}
+
+/** Converts a page of domain conversations to its response shape. */
+export const toConversationPageResponse = (
+  _page: Page<IConversationEntity>,
+): ConversationPageResponse => {
+  throw new Error('not implemented');
+};

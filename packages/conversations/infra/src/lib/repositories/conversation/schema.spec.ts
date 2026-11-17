@@ -117,16 +117,16 @@ describe('ConversationDo schema', () => {
       ]);
     });
 
-    it('serves the filter by status', () => {
+    it('serves the filter by status, already in list order', () => {
       expect(ConversationDoSchema.indexes()).toContainEqual([
-        { workspaceId: 1, status: 1 },
+        { workspaceId: 1, status: 1, createdAt: -1, _id: -1 },
         expect.anything(),
       ]);
     });
 
-    it('serves the filter by assigned agent', () => {
+    it('serves the filter by assigned agent, already in list order', () => {
       expect(ConversationDoSchema.indexes()).toContainEqual([
-        { workspaceId: 1, assignedAgentId: 1 },
+        { workspaceId: 1, assignedAgentId: 1, createdAt: -1, _id: -1 },
         expect.anything(),
       ]);
     });

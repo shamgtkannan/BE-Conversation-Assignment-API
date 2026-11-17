@@ -8,6 +8,7 @@ import {
   GetConversationUseCase,
   ID_GENERATOR,
   IdGenerator,
+  ListConversationsUseCase,
 } from 'conversations-application';
 import { ConversationRepositoryModule } from 'conversations-infra';
 import { SystemClock } from '../../common/system-clock';
@@ -33,6 +34,12 @@ import { ConversationsController } from './conversations.controller';
       provide: GetConversationUseCase,
       useFactory: (conversations: ConversationRepository) =>
         new GetConversationUseCase(conversations),
+      inject: [CONVERSATION_REPOSITORY],
+    },
+    {
+      provide: ListConversationsUseCase,
+      useFactory: (conversations: ConversationRepository) =>
+        new ListConversationsUseCase(conversations),
       inject: [CONVERSATION_REPOSITORY],
     },
   ],

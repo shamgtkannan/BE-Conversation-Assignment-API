@@ -1,4 +1,11 @@
-import { Conversation, IConversationEntity } from 'conversations-domain';
+import { PageRequest } from '@shared/core';
+import { Conversation, ConversationStatus, IConversationEntity } from 'conversations-domain';
+
+/** Optional filters of the conversation list; both combine with AND. */
+export interface ConversationFilter {
+  status?: ConversationStatus;
+  assignedAgentId?: string;
+}
 
 /**
  * Storage for conversations. Implemented in `conversations-infra`; the
@@ -18,6 +25,19 @@ export interface ConversationRepository {
    * a well-formed id (see `isConversationId`); the use case checks that first.
    */
   findById(workspaceId: string, id: string): Promise<IConversationEntity | null>;
+
+  /**
+   * Reads up to `request.fetchSize` conversations of one workspace that match
+   * `filter`. Ordering contract (the same as the agents list): newest first by
+   * `createdAt`, ties broken by id descending. With a cursor, only rows strictly
+   * after it in that order are returned (`next`) or strictly before it
+   * (`previous`, returned nearest-first so the caller can reverse them).
+   */
+  list(
+    workspaceId: string,
+    filter: ConversationFilter,
+    request: PageRequest,
+  ): Promise<IConversationEntity[]>;
 }
 /** Injection token for {@link ConversationRepository}. */
 export const CONVERSATION_REPOSITORY = Symbol('CONVERSATION_REPOSITORY');

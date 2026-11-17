@@ -5,6 +5,7 @@ import {
   CreateConversationCommand,
   CreateConversationUseCase,
   GetConversationUseCase,
+  ListConversationsUseCase,
 } from 'conversations-application';
 import { IConversationEntity, InvalidConversationError } from 'conversations-domain';
 import { AddressInfo } from 'net';
@@ -46,6 +47,7 @@ describe('POST /conversations', () => {
       providers: [
         { provide: CreateConversationUseCase, useValue: { execute } },
         { provide: GetConversationUseCase, useValue: { execute: jest.fn() } },
+        { provide: ListConversationsUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

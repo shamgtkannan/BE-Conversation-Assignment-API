@@ -5,6 +5,7 @@ import {
   CreateConversationUseCase,
   GetConversationCommand,
   GetConversationUseCase,
+  ListConversationsUseCase,
 } from 'conversations-application';
 import {
   ConversationNotFoundError,
@@ -56,6 +57,7 @@ describe('GET /conversations/:id', () => {
       providers: [
         { provide: GetConversationUseCase, useValue: { execute } },
         { provide: CreateConversationUseCase, useValue: { execute: jest.fn() } },
+        { provide: ListConversationsUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

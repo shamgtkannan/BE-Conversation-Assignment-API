@@ -1,5 +1,5 @@
 /** Conversation field that failed a domain rule. */
-export type ConversationField = 'id' | 'subject' | 'status';
+export type ConversationField = 'id' | 'subject' | 'status' | 'assignedAgentId';
 
 /**
  * Thrown when data about a conversation breaks a domain rule (blank subject,

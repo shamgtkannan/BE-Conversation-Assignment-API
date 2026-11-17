@@ -1,5 +1,5 @@
 import { IConversationEntity } from 'conversations-domain';
-import { toConversationResponse } from './conversation.response';
+import { toConversationPageResponse, toConversationResponse } from './conversation.response';
 
 const unassigned: IConversationEntity = {
   id: '65f1a2b3c4d5e6f708091a2b',
@@ -75,5 +75,25 @@ describe('toConversationResponse', () => {
         'workspaceId',
       ].sort(),
     );
+  });
+});
+
+describe('toConversationPageResponse', () => {
+  it('maps every item and keeps the paging fields', () => {
+    expect(
+      toConversationPageResponse({
+        items: [assigned, unassigned],
+        hasNext: true,
+        next: 'next_token',
+        hasPrevious: false,
+        previous: null,
+      }),
+    ).toEqual({
+      items: [toConversationResponse(assigned), toConversationResponse(unassigned)],
+      hasNext: true,
+      next: 'next_token',
+      hasPrevious: false,
+      previous: null,
+    });
   });
 });

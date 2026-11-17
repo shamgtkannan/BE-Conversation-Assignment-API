@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ConversationRepository } from 'conversations-application';
+import { PageRequest } from '@shared/core';
+import { ConversationFilter, ConversationRepository } from 'conversations-application';
 import { Conversation, IConversationEntity } from 'conversations-domain';
 import * as mongoose from 'mongoose';
 import { ConversationDo } from './schema';
@@ -83,6 +84,14 @@ export class MongooseConversationRepository implements ConversationRepository {
       .findOne({ _id: new mongoose.Types.ObjectId(id), workspaceId })
       .lean();
     return doc ? toEntity(doc) : null;
+  }
+
+  async list(
+    _workspaceId: string,
+    _filter: ConversationFilter,
+    _request: PageRequest,
+  ): Promise<IConversationEntity[]> {
+    throw new Error('not implemented');
   }
 
   /**

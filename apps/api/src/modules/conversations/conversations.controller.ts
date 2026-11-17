@@ -1,9 +1,19 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { CreateConversationUseCase, GetConversationUseCase } from 'conversations-application';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  CreateConversationUseCase,
+  GetConversationUseCase,
+  ListConversationsUseCase,
+} from 'conversations-application';
 import { AuthContext } from '../../auth/auth-context';
 import { CurrentAuth } from '../../auth/current-auth.decorator';
-import { ConversationResponse, toConversationResponse } from './conversation.response';
+import {
+  ConversationPageResponse,
+  ConversationResponse,
+  toConversationPageResponse,
+  toConversationResponse,
+} from './conversation.response';
 import { CreateConversationDto } from './dto/create-conversation.dto';
+import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 
 /** HTTP entry point for conversations. It only delegates; the rules live in the use cases. */
 @Controller('conversations')
@@ -11,7 +21,27 @@ export class ConversationsController {
   constructor(
     private readonly createConversationUseCase: CreateConversationUseCase,
     private readonly getConversationUseCase: GetConversationUseCase,
+    private readonly listConversationsUseCase: ListConversationsUseCase,
   ) {}
+
+  /**
+   * `GET /conversations`: one page of the caller's workspace, newest first
+   * (200), optionally filtered by `status` and `assignedAgentId`. Any
+   * authenticated role may list. Bad paging or filter values become 400.
+   */
+  @Get()
+  async list(
+    @Query() query: ListConversationsQueryDto,
+    @CurrentAuth() auth: AuthContext,
+  ): Promise<ConversationPageResponse> {
+    const page = await this.listConversationsUseCase.execute({
+      workspaceId: auth.workspaceId,
+      limit: query.limit,
+      next: query.next,
+      previous: query.previous,
+    });
+    return toConversationPageResponse(page);
+  }
 
   /**
    * `GET /conversations/:id`: one conversation of the caller's workspace (200).

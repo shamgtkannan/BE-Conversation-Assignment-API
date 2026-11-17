@@ -7,6 +7,7 @@ import {
   CreateConversationUseCase,
   GetConversationUseCase,
   ListConversationsUseCase,
+  UnassignConversationUseCase,
 } from 'conversations-application';
 import {
   AssignedAgentNotFoundError,
@@ -68,6 +69,7 @@ describe('PATCH /conversations/:id/assignment', () => {
         { provide: CreateConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: GetConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: ListConversationsUseCase, useValue: { execute: jest.fn() } },
+        { provide: UnassignConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
   AssignConversationUseCase,
   CreateConversationUseCase,
   GetConversationUseCase,
   ListConversationsUseCase,
+  UnassignConversationUseCase,
 } from 'conversations-application';
 import { AuthContext } from '../../auth/auth-context';
 import { CurrentAuth } from '../../auth/current-auth.decorator';
@@ -25,7 +26,24 @@ export class ConversationsController {
     private readonly getConversationUseCase: GetConversationUseCase,
     private readonly listConversationsUseCase: ListConversationsUseCase,
     private readonly assignConversationUseCase: AssignConversationUseCase,
+    private readonly unassignConversationUseCase: UnassignConversationUseCase,
   ) {}
+
+  /**
+   * `DELETE /conversations/:id/assignment`: removes the conversation's
+   * assignment (200) and answers with the conversation, whose assignment fields
+   * are then `null`. Only admins and managers may (403). A malformed id is 400;
+   * an unknown conversation is 404. Unassigning an unassigned conversation is a
+   * harmless 200.
+   */
+  @Delete(':id/assignment')
+  async unassign(
+    @Param('id') _id: string,
+    @CurrentAuth() _auth: AuthContext,
+  ): Promise<ConversationResponse> {
+    void this.unassignConversationUseCase;
+    throw new Error('not implemented');
+  }
 
   /**
    * `PATCH /conversations/:id/assignment`: assigns the conversation to an agent

@@ -1,6 +1,6 @@
 /**
- * Integration test: talks to a real MongoDB (the `docker/compose/mongodb-8.0`
- * replica set by default). Run it with `npx nx integration conversations-infra`.
+ * Integration test: talks to a real MongoDB (the replica set from `docker-compose.yml` by default).
+ * Run it with `npx nx integration conversations-infra`.
  * It only ever touches a database whose name ends in `_test` and drops it afterwards.
  */
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
@@ -13,7 +13,7 @@ import * as os from 'os';
 import { ConversationRepositoryModule } from './conversation-repository.module';
 import { ConversationDo } from './schema';
 
-const hosts = process.env['MONGODB_TEST_HOSTS'] ?? 'mongodb1:27801,mongodb2:27802,mongodb3:27803';
+const hosts = process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
 const replicaSet = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
 // Each integration suite gets its own database (here: assignment_conversations_infra_test),
 // because nx runs suites in parallel and every suite empties and drops the database it uses.

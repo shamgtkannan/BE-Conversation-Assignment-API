@@ -1,11 +1,11 @@
 # agents-application
 
-This library was generated with [Nx](https://nx.dev).
+The agent use cases (`CreateAgentUseCase`, `GetAgentUseCase`, `ListAgentsUseCase`), the ports they need (`AgentRepository`, `IdGenerator`, `Clock`, with their injection tokens) and an in-memory `AgentRepository` for tests.
 
-## Building
+Plain classes with no Nest decorators. It may import `agents-domain` and `@shared/core`, never Nest or Mongoose.
 
-Run `nx build agents-application` to build the library.
+## Tests
 
-## Running unit tests
-
-Run `nx test agents-application` to execute the unit tests via [Jest](https://jestjs.io).
+```sh
+npx nx test agents-application
+```

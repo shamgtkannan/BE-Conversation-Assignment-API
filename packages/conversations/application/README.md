@@ -1,11 +1,11 @@
 # conversations-application
 
-This library was generated with [Nx](https://nx.dev).
+The conversation use cases (create, get, list, assign, unassign), the ports they need (`ConversationRepository`, `AgentLookup`, `IdGenerator`, `Clock`, with their injection tokens), the `ASSIGNING_ROLES` rule and in-memory test doubles.
 
-## Building
+Plain classes with no Nest decorators. It may import `conversations-domain` and `@shared/core`, never Nest or Mongoose, and never the agents libraries: `AgentLookup` is how it asks about agents.
 
-Run `nx build conversations-application` to build the library.
+## Tests
 
-## Running unit tests
-
-Run `nx test conversations-application` to execute the unit tests via [Jest](https://jestjs.io).
+```sh
+npx nx test conversations-application
+```

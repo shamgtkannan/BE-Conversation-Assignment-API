@@ -18,3 +18,10 @@ out-tsc
 /coverage
 
 .env
+
+# Postman: the desktop app writes workspace metadata and a YAML copy of the collection here.
+# Only the two JSON files at the top of postman/ (the collection and the environment) are committed.
+/.postman/
+/postman/*/
+# newman run reports
+/newman/

@@ -1,7 +1,17 @@
 # conversations-infra
 
-This library was generated with [Nx](https://nx.dev).
+The MongoDB side of conversations: the `ConversationDo` Mongoose schema with its indexes, `MongooseConversationRepository`, `ObjectIdGenerator` and `ConversationRepositoryModule`, which binds them to the application ports.
 
-## Running unit tests
+It may import `conversations-application`, `conversations-domain` and `@shared/core`.
 
-Run `nx test conversations-infra` to execute the unit tests via [Jest](https://jestjs.io).
+## Tests
+
+```sh
+npx nx test conversations-infra
+```
+
+The integration tests use a real MongoDB (start it with `docker compose up -d --wait`):
+
+```sh
+npx nx integration conversations-infra
+```

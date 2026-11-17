@@ -47,6 +47,10 @@ describe('AgentDo schema', () => {
     expect(agent.workspaceId).toBe('workspace_1');
   });
 
+  it('stores only the listed fields: no Mongoose version key', () => {
+    expect(AgentDoSchema.get('versionKey')).toBe(false);
+  });
+
   it('keeps timestamps as Date values and does not auto-generate them', () => {
     expect(AgentDoSchema.get('timestamps')).toBeFalsy();
     expect(new AgentModel(validProps()).createdAt).toBeInstanceOf(Date);

@@ -1,11 +1,11 @@
 # agents-domain
 
-This library was generated with [Nx](https://nx.dev).
+The `Agent` entity and its rules (the name is trimmed and must not be blank; the email is trimmed, lower-cased and must be valid), the agent id check, and the domain errors (`InvalidAgentError`, `AgentNotFoundError`, `AgentEmailAlreadyExistsError`).
 
-## Building
+Imports no framework or database. It may import only `@shared/core`.
 
-Run `nx build agents-domain` to build the library.
+## Tests
 
-## Running unit tests
-
-Run `nx test agents-domain` to execute the unit tests via [Jest](https://jestjs.io).
+```sh
+npx nx test agents-domain
+```

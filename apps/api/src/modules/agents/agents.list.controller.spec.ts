@@ -7,7 +7,8 @@ import {
   ListAgentsCommand,
   ListAgentsUseCase,
 } from 'agents-application';
-import { AgentPage, IAgentEntity, InvalidPageRequestError } from 'agents-domain';
+import { InvalidPageRequestError, Page } from '@shared/core';
+import { IAgentEntity } from 'agents-domain';
 import { AddressInfo } from 'net';
 import { createValidationPipe } from '../../app/validation-pipe';
 import { AuthGuard } from '../../auth/auth.guard';
@@ -23,7 +24,7 @@ const agent = (n: number): IAgentEntity => ({
   updatedAt: new Date(Date.UTC(2026, 10, 13, 8, n)),
 });
 
-const page: AgentPage = {
+const page: Page<IAgentEntity> = {
   items: [agent(2), agent(1)],
   hasNext: true,
   next: 'next_token',
@@ -40,7 +41,7 @@ const authHeaders = (role = 'agent') => ({
 describe('GET /agents', () => {
   let app: INestApplication;
   let baseUrl: string;
-  const execute = jest.fn<Promise<AgentPage>, [ListAgentsCommand]>();
+  const execute = jest.fn<Promise<Page<IAgentEntity>>, [ListAgentsCommand]>();
 
   const get = (query = '', headers: Record<string, string> = authHeaders()) =>
     fetch(`${baseUrl}/agents${query}`, { headers });

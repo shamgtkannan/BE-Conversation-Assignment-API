@@ -1,14 +1,14 @@
-import { isAgentId } from '../agent-id';
+import { isEntityId } from '../entity-id';
 import {
   InvalidPageRequestError,
   PageRequestField,
 } from '../exceptions/invalid-page-request.error';
 
 /**
- * A position in the agent list, which is ordered newest first with the id as
- * tiebreaker. Only the sort keys are kept, never the whole agent.
+ * A position in a list ordered newest first with the id as tiebreaker. Only the
+ * sort keys are kept, never the whole item.
  */
-export interface AgentCursor {
+export interface Cursor {
   createdAt: Date;
   id: string;
 }
@@ -18,7 +18,7 @@ export interface AgentCursor {
  * object). It is not encrypted: callers must treat it as opaque, and the
  * workspace scope is always applied from the auth context, never from the token.
  */
-export const encodeCursor = (cursor: AgentCursor): string =>
+export const encodeCursor = (cursor: Cursor): string =>
   Buffer.from(JSON.stringify({ c: cursor.createdAt.toISOString(), i: cursor.id })).toString(
     'base64url',
   );
@@ -29,7 +29,7 @@ export const encodeCursor = (cursor: AgentCursor): string =>
  * @param field which request parameter the token came from, for the error.
  * @throws {InvalidPageRequestError} when the token is malformed or tampered with.
  */
-export const decodeCursor = (token: string, field: PageRequestField): AgentCursor => {
+export const decodeCursor = (token: string, field: PageRequestField): Cursor => {
   const invalid = () => new InvalidPageRequestError(field, `The ${field} cursor is not valid`);
 
   let parsed: unknown;
@@ -43,7 +43,7 @@ export const decodeCursor = (token: string, field: PageRequestField): AgentCurso
   }
 
   const { c, i } = parsed as { c?: unknown; i?: unknown };
-  if (typeof c !== 'string' || typeof i !== 'string' || !isAgentId(i)) {
+  if (typeof c !== 'string' || typeof i !== 'string' || !isEntityId(i)) {
     throw invalid();
   }
   const createdAt = new Date(c);

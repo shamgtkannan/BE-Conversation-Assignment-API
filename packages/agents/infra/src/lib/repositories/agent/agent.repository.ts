@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { AgentRepository } from 'agents-application';
-import { Agent, AgentEmailAlreadyExistsError, IAgentEntity, PageRequest } from 'agents-domain';
+import { PageRequest } from '@shared/core';
+import { Agent, AgentEmailAlreadyExistsError, IAgentEntity } from 'agents-domain';
 import * as mongoose from 'mongoose';
 import { AgentDo } from './schema';
 

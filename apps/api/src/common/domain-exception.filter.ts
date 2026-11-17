@@ -1,10 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus } from '@nestjs/common';
-import {
-  AgentEmailAlreadyExistsError,
-  AgentNotFoundError,
-  InvalidAgentError,
-  InvalidPageRequestError,
-} from 'agents-domain';
+import { InvalidPageRequestError } from '@shared/core';
+import { AgentEmailAlreadyExistsError, AgentNotFoundError, InvalidAgentError } from 'agents-domain';
 import { ConversationNotFoundError, InvalidConversationError } from 'conversations-domain';
 
 interface JsonResponse {

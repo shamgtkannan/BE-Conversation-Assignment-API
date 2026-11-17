@@ -6,7 +6,8 @@
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { AGENT_REPOSITORY, AgentRepository } from 'agents-application';
-import { Agent, AgentEmailAlreadyExistsError, PageRequest, buildAgentPage } from 'agents-domain';
+import { PageRequest, buildPage } from '@shared/core';
+import { Agent, AgentEmailAlreadyExistsError } from 'agents-domain';
 import * as mongoose from 'mongoose';
 import * as os from 'os';
 import { AgentRepositoryModule } from './agent-repository.module';
@@ -174,7 +175,7 @@ describe('MongooseAgentRepository (real MongoDB)', () => {
       );
     const page = (input: { limit?: number; next?: string; previous?: string }, ws = 'workspace_1') => {
       const request = PageRequest.create(input);
-      return repository.list(ws, request).then((rows) => buildAgentPage(rows, request));
+      return repository.list(ws, request).then((rows) => buildPage(rows, request));
     };
     const names = (rows: { name: string }[]) => rows.map((r) => r.name);
 

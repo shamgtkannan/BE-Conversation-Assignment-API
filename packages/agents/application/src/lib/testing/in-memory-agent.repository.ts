@@ -1,9 +1,5 @@
-import {
-  Agent,
-  AgentEmailAlreadyExistsError,
-  IAgentEntity,
-  PageRequest,
-} from 'agents-domain';
+import { PageRequest } from '@shared/core';
+import { Agent, AgentEmailAlreadyExistsError, IAgentEntity } from 'agents-domain';
 import { AgentRepository } from '../ports';
 
 /** List order: newest first, the id breaks ties. */

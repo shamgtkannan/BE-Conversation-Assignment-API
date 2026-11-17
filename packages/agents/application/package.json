@@ -7,6 +7,7 @@
   "types": "./src/index.d.ts",
   "dependencies": {
     "tslib": "^2.3.0",
-    "agents-domain": "0.0.1"
+    "agents-domain": "0.0.1",
+    "@shared/core": "0.0.1"
   }
 }

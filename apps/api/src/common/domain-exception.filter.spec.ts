@@ -1,12 +1,8 @@
 import { ArgumentsHost } from '@nestjs/common';
 import { FILTER_CATCH_EXCEPTIONS } from '@nestjs/common/constants';
 import { ConversationNotFoundError, InvalidConversationError } from 'conversations-domain';
-import {
-  AgentEmailAlreadyExistsError,
-  AgentNotFoundError,
-  InvalidAgentError,
-  InvalidPageRequestError,
-} from 'agents-domain';
+import { InvalidPageRequestError } from '@shared/core';
+import { AgentEmailAlreadyExistsError, AgentNotFoundError, InvalidAgentError } from 'agents-domain';
 import { DomainExceptionFilter } from './domain-exception.filter';
 
 /** A fake HTTP host that records the status and body the filter writes. */

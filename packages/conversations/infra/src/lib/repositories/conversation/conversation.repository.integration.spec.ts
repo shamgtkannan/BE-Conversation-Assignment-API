@@ -5,7 +5,8 @@
  */
 import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
-import { CONVERSATION_REPOSITORY, ConversationRepository } from 'conversations-application';
+import { PageRequest, buildPage } from '@shared/core';
+import { CONVERSATION_REPOSITORY, ConversationFilter, ConversationRepository } from 'conversations-application';
 import { Conversation } from 'conversations-domain';
 import * as mongoose from 'mongoose';
 import * as os from 'os';
@@ -260,13 +261,179 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
     });
   });
 
+  describe('list', () => {
+    const id = (n: number) => n.toString(16).padStart(24, '0');
+    /** Conversation `n`: a higher n is created later; `agent` makes it assigned. */
+    const seed = async (
+      n: number,
+      overrides: Partial<Parameters<typeof Conversation.create>[0]> = {},
+      agent?: number,
+    ) => {
+      const conversation = Conversation.create({
+        id: id(n),
+        workspaceId: 'workspace_1',
+        subject: `Conversation ${n}`,
+        now: new Date(Date.UTC(2026, 10, 13, 8, n)),
+        ...overrides,
+      });
+      if (agent !== undefined) {
+        // Assignment is not built yet, so seed the three fields directly.
+        Object.assign(conversation, {
+          assignedAgentId: id(agent),
+          assignedAt: conversation.createdAt,
+          assignedBy: 'user_1',
+        });
+      }
+      await repository.save(conversation);
+    };
+    const page = (
+      input: { limit?: number; next?: string; previous?: string },
+      filter: ConversationFilter = {},
+      workspaceId = 'workspace_1',
+    ) => {
+      const request = PageRequest.create(input);
+      return repository.list(workspaceId, filter, request).then((rows) => buildPage(rows, request));
+    };
+    const subjects = (rows: { subject: string }[]) => rows.map((r) => r.subject);
+
+    it('returns a workspace newest first, as plain entities', async () => {
+      for (const n of [2, 1, 3]) await seed(n);
+
+      const rows = await repository.list('workspace_1', {}, PageRequest.create({}));
+
+      expect(subjects(rows)).toEqual(['Conversation 3', 'Conversation 2', 'Conversation 1']);
+      expect(rows[0]).toEqual({
+        id: id(3),
+        workspaceId: 'workspace_1',
+        subject: 'Conversation 3',
+        status: 'open',
+        createdAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
+        updatedAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
+      });
+    });
+
+    it('keeps the assignment fields on assigned conversations', async () => {
+      await seed(1, {}, 9);
+
+      const [row] = await repository.list('workspace_1', {}, PageRequest.create({}));
+
+      expect(row).toMatchObject({ assignedAgentId: id(9), assignedBy: 'user_1' });
+      expect(row.assignedAt).toEqual(new Date(Date.UTC(2026, 10, 13, 8, 1)));
+    });
+
+    it("never returns another workspace's conversations", async () => {
+      await seed(1);
+      await seed(2, { workspaceId: 'workspace_2' });
+
+      expect(subjects(await repository.list('workspace_1', {}, PageRequest.create({})))).toEqual([
+        'Conversation 1',
+      ]);
+      expect(await repository.list('workspace_3', {}, PageRequest.create({}))).toEqual([]);
+    });
+
+    it('fetches at most limit + 1 rows', async () => {
+      for (const n of [1, 2, 3, 4, 5]) await seed(n);
+
+      const rows = await repository.list('workspace_1', {}, PageRequest.create({ limit: 2 }));
+
+      expect(subjects(rows)).toEqual(['Conversation 5', 'Conversation 4', 'Conversation 3']);
+    });
+
+    it('pages forward and back through every conversation exactly once', async () => {
+      for (const n of [1, 2, 3, 4, 5]) await seed(n);
+
+      const first = await page({ limit: 2 });
+      const second = await page({ limit: 2, next: first.next as string });
+      const third = await page({ limit: 2, next: second.next as string });
+      expect([first, second, third].map((p) => subjects(p.items))).toEqual([
+        ['Conversation 5', 'Conversation 4'],
+        ['Conversation 3', 'Conversation 2'],
+        ['Conversation 1'],
+      ]);
+      expect(third.hasNext).toBe(false);
+
+      const back = await page({ limit: 2, previous: third.previous as string });
+      expect(subjects(back.items)).toEqual(['Conversation 3', 'Conversation 2']);
+      const backAgain = await page({ limit: 2, previous: back.previous as string });
+      expect(subjects(backAgain.items)).toEqual(['Conversation 5', 'Conversation 4']);
+      expect(backAgain.hasPrevious).toBe(false);
+    });
+
+    it('does not repeat or skip conversations created at the same instant', async () => {
+      const now = new Date(Date.UTC(2026, 10, 13, 9, 0));
+      for (const n of [1, 2, 3, 4]) await seed(n, { now });
+
+      const seen: string[] = [];
+      let next: string | undefined;
+      do {
+        const result = await page({ limit: 1, next });
+        seen.push(...subjects(result.items));
+        next = result.next ?? undefined;
+      } while (next);
+
+      expect(seen).toEqual(['Conversation 4', 'Conversation 3', 'Conversation 2', 'Conversation 1']);
+    });
+
+    it("keeps a cursor from another workspace from revealing that workspace's data", async () => {
+      for (const n of [1, 2, 3]) await seed(n);
+      for (const n of [4, 5, 6]) await seed(n, { workspaceId: 'workspace_2' });
+      const elsewhere = await page({ limit: 1 }, {}, 'workspace_2');
+
+      const result = await page({ next: elsewhere.next as string });
+
+      expect(result.items.length).toBeGreaterThan(0);
+      expect(result.items.every((c) => c.workspaceId === 'workspace_1')).toBe(true);
+    });
+
+    describe('filters', () => {
+      beforeEach(async () => {
+        await seed(1, {}, 9);
+        await seed(2, { status: 'closed' }, 9);
+        await seed(3, {}, 8);
+        await seed(4);
+        await seed(5, { workspaceId: 'workspace_2' }, 9);
+      });
+
+      it('filters by status', async () => {
+        expect(subjects((await page({}, { status: 'open' })).items)).toEqual([
+          'Conversation 4',
+          'Conversation 3',
+          'Conversation 1',
+        ]);
+        expect(subjects((await page({}, { status: 'closed' })).items)).toEqual(['Conversation 2']);
+      });
+
+      it('filters by assigned agent', async () => {
+        expect(subjects((await page({}, { assignedAgentId: id(9) })).items)).toEqual([
+          'Conversation 2',
+          'Conversation 1',
+        ]);
+      });
+
+      it('combines both filters', async () => {
+        expect(
+          subjects((await page({}, { status: 'open', assignedAgentId: id(9) })).items),
+        ).toEqual(['Conversation 1']);
+      });
+
+      it('pages through a filtered list without leaving the filter', async () => {
+        const first = await page({ limit: 2 }, { status: 'open' });
+        const second = await page({ limit: 2, next: first.next as string }, { status: 'open' });
+
+        expect(subjects(first.items)).toEqual(['Conversation 4', 'Conversation 3']);
+        expect(subjects(second.items)).toEqual(['Conversation 1']);
+        expect(second.hasNext).toBe(false);
+      });
+    });
+  });
+
   describe('indexes', () => {
     it('exist in the database', async () => {
       const keys = (await model.collection.indexes()).map((index) => index.key);
 
       expect(keys).toContainEqual({ workspaceId: 1, createdAt: -1, _id: -1 });
-      expect(keys).toContainEqual({ workspaceId: 1, status: 1 });
-      expect(keys).toContainEqual({ workspaceId: 1, assignedAgentId: 1 });
+      expect(keys).toContainEqual({ workspaceId: 1, status: 1, createdAt: -1, _id: -1 });
+      expect(keys).toContainEqual({ workspaceId: 1, assignedAgentId: 1, createdAt: -1, _id: -1 });
     });
   });
 });

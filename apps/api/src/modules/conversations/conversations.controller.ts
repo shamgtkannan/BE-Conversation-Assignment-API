@@ -35,12 +35,18 @@ export class ConversationsController {
    */
   @Patch(':id/assignment')
   async assign(
-    @Param('id') _id: string,
-    @Body() _dto: AssignConversationDto,
-    @CurrentAuth() _auth: AuthContext,
+    @Param('id') id: string,
+    @Body() dto: AssignConversationDto,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<ConversationResponse> {
-    void this.assignConversationUseCase;
-    throw new Error('not implemented');
+    const conversation = await this.assignConversationUseCase.execute({
+      workspaceId: auth.workspaceId,
+      userId: auth.userId,
+      role: auth.role,
+      conversationId: id,
+      agentId: dto.agentId,
+    });
+    return toConversationResponse(conversation);
   }
 
   /**

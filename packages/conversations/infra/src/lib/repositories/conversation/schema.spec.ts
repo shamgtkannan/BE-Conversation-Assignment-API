@@ -1,5 +1,7 @@
 import * as mongoose from 'mongoose';
+import { CONVERSATION_STATUSES } from 'conversations-domain';
 import { ConversationDo, ConversationDoSchema } from './schema';
+import { conversationValidator } from './validator';
 
 const ConversationModel =
   (mongoose.models[ConversationDo.name] as mongoose.Model<ConversationDo> | undefined) ??
@@ -136,5 +138,24 @@ describe('ConversationDo schema', () => {
 
       expect(unique).toEqual([]);
     });
+  });
+});
+
+describe('conversation collection validator', () => {
+  const schema = conversationValidator.$jsonSchema as {
+    required: string[];
+    properties: Record<string, { enum?: string[] }>;
+  };
+
+  it('describes exactly the fields of the Mongoose schema, so the two cannot drift apart', () => {
+    expect(Object.keys(schema.properties).sort()).toEqual(Object.keys(ConversationDoSchema.paths).sort());
+  });
+
+  it('requires exactly the fields the Mongoose schema requires', () => {
+    expect([...schema.required].sort()).toEqual(ConversationDoSchema.requiredPaths().sort());
+  });
+
+  it('allows exactly the statuses the domain defines', () => {
+    expect([...(schema.properties['status'].enum ?? [])].sort()).toEqual([...CONVERSATION_STATUSES].sort());
   });
 });

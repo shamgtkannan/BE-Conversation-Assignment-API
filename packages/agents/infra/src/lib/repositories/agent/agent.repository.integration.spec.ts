@@ -12,6 +12,7 @@ import * as mongoose from 'mongoose';
 import * as os from 'os';
 import { AgentRepositoryModule } from './agent-repository.module';
 import { AgentDo } from './schema';
+import { agentValidator } from './validator';
 
 const hosts = process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
 const replicaSet = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
@@ -256,6 +257,89 @@ describe('MongooseAgentRepository (real MongoDB)', () => {
 
       expect(result.items.length).toBeGreaterThan(0);
       expect(names(result.items).every((name) => ['Agent 1', 'Agent 2', 'Agent 3'].includes(name))).toBe(true);
+    });
+  });
+
+  describe('collection validator (documents written straight to MongoDB, bypassing the repository)', () => {
+    const base = () => ({
+      workspaceId: 'workspace_1',
+      name: 'Ada Lovelace',
+      email: 'ada@example.com',
+      createdAt: now,
+      updatedAt: now,
+    });
+    /** MongoDB's "document failed validation" error code. */
+    const FAILED_VALIDATION = 121;
+    const insert = (doc: object) => model.collection.insertOne(doc);
+    const database = () => {
+      if (!model.db.db) throw new Error('MongoDB connection is not ready');
+      return model.db.db;
+    };
+
+    it('is set on the collection', async () => {
+      const [info] = await database().listCollections({ name: 'agents' }, { nameOnly: false }).toArray();
+
+      expect((info.options as { validator?: unknown }).validator).toEqual(agentValidator);
+    });
+
+    it('accepts a valid agent', async () => {
+      await expect(insert(base())).resolves.toBeDefined();
+    });
+
+    it.each([
+      ['an email with capital letters, which the domain would have lower-cased', { email: 'Ada@Example.com' }],
+      ['an email without an @', { email: 'ada.example.com' }],
+      ['an empty email', { email: '' }],
+      ['a blank name', { name: '   ' }],
+      ['an empty name', { name: '' }],
+      ['an empty workspace', { workspaceId: '' }],
+      ['a name of the wrong type', { name: 42 }],
+      ['a field the schema does not know', { phone: '123' }],
+    ])('rejects %s', async (_label, override) => {
+      await expect(insert({ ...base(), ...override })).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+
+    it('rejects a document with a required field missing', async () => {
+      const withoutEmail: Record<string, unknown> = { ...base() };
+      delete withoutEmail['email'];
+
+      await expect(insert(withoutEmail)).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+  });
+
+  describe('starting against a database that already holds older documents', () => {
+    const legacyDb = dbName.replace(/_test$/, '_legacy_test');
+    const uri = `mongodb://${hosts}`;
+    const options = {
+      dbName: legacyDb,
+      replicaSet,
+      serverSelectionTimeoutMS: 5000,
+      runtimeAdapters: { os },
+    };
+
+    it('starts, sets the validator and builds the indexes, and keeps the older documents', async () => {
+      // An older database: the collection exists with a document that breaks the new rules, and has no indexes.
+      const seed = await mongoose.createConnection(uri, options).asPromise();
+      await seed.collection('agents').insertOne({ workspaceId: 'w', name: 'Old', email: 'Old@Example.com', createdAt: now, updatedAt: now, __v: 0 });
+      await seed.close();
+
+      const legacyModule = await Test.createTestingModule({
+        imports: [MongooseModule.forRoot(uri, options), AgentRepositoryModule],
+      }).compile();
+      try {
+        await legacyModule.init();
+
+        const legacyModel = legacyModule.get<mongoose.Model<AgentDo>>(getModelToken(AgentDo.name));
+        const legacyDatabase = legacyModel.db.db;
+        if (!legacyDatabase) throw new Error('MongoDB connection is not ready');
+        const [info] = await legacyDatabase.listCollections({ name: 'agents' }, { nameOnly: false }).toArray();
+        expect((info.options as { validator?: unknown }).validator).toBeDefined();
+        expect((await legacyModel.collection.indexes()).map((index) => index.key)).toContainEqual({ workspaceId: 1, email: 1 });
+        expect(await legacyModel.countDocuments()).toBe(1);
+      } finally {
+        await legacyModule.get<mongoose.Model<AgentDo>>(getModelToken(AgentDo.name)).db.dropDatabase();
+        await legacyModule.close();
+      }
     });
   });
 });

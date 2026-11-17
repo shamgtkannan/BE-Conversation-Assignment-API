@@ -1,5 +1,6 @@
 import * as mongoose from 'mongoose';
 import { AgentDo, AgentDoSchema } from './schema';
+import { agentValidator } from './validator';
 
 const AgentModel =
   (mongoose.models[AgentDo.name] as mongoose.Model<AgentDo> | undefined) ??
@@ -68,5 +69,17 @@ describe('AgentDo schema', () => {
       { workspaceId: 1, createdAt: -1, _id: -1 },
       expect.anything(),
     ]);
+  });
+});
+
+describe('agent collection validator', () => {
+  const schema = agentValidator.$jsonSchema as { required: string[]; properties: Record<string, unknown> };
+
+  it('describes exactly the fields of the Mongoose schema, so the two cannot drift apart', () => {
+    expect(Object.keys(schema.properties).sort()).toEqual(Object.keys(AgentDoSchema.paths).sort());
+  });
+
+  it('requires exactly the fields the Mongoose schema requires', () => {
+    expect([...schema.required].sort()).toEqual(AgentDoSchema.requiredPaths().sort());
   });
 });

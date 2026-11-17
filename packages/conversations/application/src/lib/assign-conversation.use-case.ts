@@ -8,10 +8,8 @@ import {
   InvalidConversationError,
   isConversationId,
 } from 'conversations-domain';
+import { ASSIGNING_ROLES } from './assigning-roles';
 import { AgentLookup, Clock, ConversationRepository } from './ports';
-
-/** Roles that may assign and unassign conversations. */
-const ASSIGNING_ROLES: readonly string[] = ['admin', 'manager'];
 
 /** Input of {@link AssignConversationUseCase}. All of it except the ids comes from the auth context. */
 export interface AssignConversationCommand {

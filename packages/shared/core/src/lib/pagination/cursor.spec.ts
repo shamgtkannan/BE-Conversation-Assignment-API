@@ -1,7 +1,7 @@
 import { InvalidPageRequestError } from '../exceptions/invalid-page-request.error';
-import { AgentCursor, decodeCursor, encodeCursor } from './agent-cursor';
+import { Cursor, decodeCursor, encodeCursor } from './cursor';
 
-const cursor: AgentCursor = {
+const cursor: Cursor = {
   createdAt: new Date('2026-11-13T08:30:00.123Z'),
   id: '65f1a2b3c4d5e6f708091a2b',
 };
@@ -19,7 +19,7 @@ const withValue = (index: number, value: unknown): string => {
   return toToken({ ...json, [keys[index]]: value });
 };
 
-describe('agent cursor token', () => {
+describe('cursor token', () => {
   it('round-trips a position, keeping milliseconds', () => {
     expect(decodeCursor(encodeCursor(cursor), 'next')).toEqual(cursor);
   });

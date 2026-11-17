@@ -38,11 +38,15 @@ export class ConversationsController {
    */
   @Delete(':id/assignment')
   async unassign(
-    @Param('id') _id: string,
-    @CurrentAuth() _auth: AuthContext,
+    @Param('id') id: string,
+    @CurrentAuth() auth: AuthContext,
   ): Promise<ConversationResponse> {
-    void this.unassignConversationUseCase;
-    throw new Error('not implemented');
+    const conversation = await this.unassignConversationUseCase.execute({
+      workspaceId: auth.workspaceId,
+      role: auth.role,
+      conversationId: id,
+    });
+    return toConversationResponse(conversation);
   }
 
   /**

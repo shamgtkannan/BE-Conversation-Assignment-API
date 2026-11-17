@@ -12,6 +12,7 @@ import {
   ID_GENERATOR,
   IdGenerator,
   ListConversationsUseCase,
+  UnassignConversationUseCase,
 } from 'conversations-application';
 import { GetAgentUseCase } from 'agents-application';
 import { ConversationRepositoryModule } from 'conversations-infra';
@@ -52,6 +53,12 @@ import { ConversationsController } from './conversations.controller';
       useFactory: (conversations: ConversationRepository, agents: AgentLookup, clock: Clock) =>
         new AssignConversationUseCase(conversations, agents, clock),
       inject: [CONVERSATION_REPOSITORY, AGENT_LOOKUP, CLOCK],
+    },
+    {
+      provide: UnassignConversationUseCase,
+      useFactory: (conversations: ConversationRepository, clock: Clock) =>
+        new UnassignConversationUseCase(conversations, clock),
+      inject: [CONVERSATION_REPOSITORY, CLOCK],
     },
     {
       provide: ListConversationsUseCase,

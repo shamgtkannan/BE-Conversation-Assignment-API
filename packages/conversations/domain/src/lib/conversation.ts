@@ -99,8 +99,18 @@ export class Conversation implements IConversationEntity {
    * - Unlike assigning, this is allowed on a closed conversation: the rule that
    *   closed conversations are frozen covers assigning and reassigning only.
    */
-  unassign(_now: Date): Conversation {
-    throw new Error('not implemented');
+  unassign(now: Date): Conversation {
+    if (this.assignedAgentId === undefined) {
+      return this;
+    }
+    return new Conversation(
+      this.id,
+      this.subject,
+      this.status,
+      this.workspaceId,
+      this.createdAt,
+      new Date(now),
+    );
   }
 
   /**

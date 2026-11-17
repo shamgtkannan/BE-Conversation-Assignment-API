@@ -20,7 +20,7 @@ const dbName = (process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test').repla
 
 // Point the app at the test database before the module reads its config.
 process.env['MONGODB_HOSTS'] =
-  process.env['MONGODB_TEST_HOSTS'] ?? 'mongodb1:27801,mongodb2:27802,mongodb3:27803';
+  process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
 process.env['MONGODB_REPLICA_SET'] = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
 process.env['MONGODB_DATABASE'] = dbName;
 

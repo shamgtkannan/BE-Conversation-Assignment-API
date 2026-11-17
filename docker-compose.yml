@@ -1,9 +1,37 @@
+# Local MongoDB for development and the integration tests.
+#
+# A single-node replica set. The API needs a replica set name (majority write concern),
+# and announcing the member as localhost:27017 means the host machine can reach it
+# without any /etc/hosts entry. The replica set is initialised by the healthcheck, so
+# `docker compose up -d --wait` returns once a primary is ready.
+#
+# Data is kept in the `mongo-data` volume. `docker compose down -v` wipes it.
 services:
   mongo:
-    image: mongo:7
+    image: mongo:8.0
+    container_name: assignment-mongo
+    command: ["mongod", "--replSet", "mongodb-test", "--bind_ip_all", "--port", "27017"]
     ports:
-      - "27017:27017"
+      # Loopback only: there is no authentication, so keep it off the network.
+      - "127.0.0.1:27017:27017"
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      # Initiate the set on the first check (rs.status() throws until then), then
+      # report healthy only once this node is the writable primary.
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - >-
+          try { rs.status() } catch (e) {
+          rs.initiate({ _id: 'mongodb-test', members: [{ _id: 0, host: 'localhost:27017' }] }) }
+          quit(db.hello().isWritablePrimary ? 0 : 1)
+      interval: 3s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+
 volumes:
   mongo-data:

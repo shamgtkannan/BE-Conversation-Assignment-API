@@ -1,5 +1,6 @@
 import { Conversation, CreateConversationProps } from './conversation';
 import { CONVERSATION_STATUSES } from './conversation.entity';
+import { ConversationClosedError } from './exceptions/conversation-closed.error';
 import { InvalidConversationError } from './exceptions/invalid-conversation.error';
 
 const now = new Date('2026-11-13T08:30:00.000Z');
@@ -81,6 +82,89 @@ describe('Conversation.create', () => {
       expect(() =>
         Conversation.create(props({ status: status as unknown as 'open' })),
       ).toThrow(expect.objectContaining({ name: 'InvalidConversationError', field: 'status' }));
+    });
+  });
+});
+
+describe('Conversation.assign', () => {
+  const agentA = '65f1a2b3c4d5e6f708091a2c';
+  const agentB = '65f1a2b3c4d5e6f708091a2d';
+  const later = new Date('2026-11-13T09:00:00.000Z');
+  const evenLater = new Date('2026-11-13T10:00:00.000Z');
+
+  it('assigns an unassigned conversation, recording who and when', () => {
+    const assigned = Conversation.create(props()).assign(agentA, 'user_1', later);
+
+    expect(assigned).toMatchObject({
+      id: '65f1a2b3c4d5e6f708091a2b',
+      subject: 'Unable to log in',
+      status: 'open',
+      workspaceId: 'workspace_1',
+      assignedAgentId: agentA,
+      assignedAt: later,
+      assignedBy: 'user_1',
+      createdAt: now,
+      updatedAt: later,
+    });
+  });
+
+  it('leaves the original conversation untouched', () => {
+    const original = Conversation.create(props());
+
+    original.assign(agentA, 'user_1', later);
+
+    expect(original.assignedAgentId).toBeUndefined();
+    expect(original.updatedAt).toEqual(now);
+  });
+
+  it('replaces the current agent, assignedAt and assignedBy on reassignment', () => {
+    const first = Conversation.create(props()).assign(agentA, 'user_1', later);
+
+    const second = first.assign(agentB, 'user_2', evenLater);
+
+    expect(second).toMatchObject({
+      assignedAgentId: agentB,
+      assignedAt: evenLater,
+      assignedBy: 'user_2',
+      createdAt: now,
+      updatedAt: evenLater,
+    });
+  });
+
+  it('changes nothing when the same agent is assigned again', () => {
+    const first = Conversation.create(props()).assign(agentA, 'user_1', later);
+
+    const again = first.assign(agentA, 'user_2', evenLater);
+
+    expect(again).toBe(first);
+    expect(again).toMatchObject({ assignedAt: later, assignedBy: 'user_1', updatedAt: later });
+  });
+
+  it('copies the dates it is given, so the caller cannot change them afterwards', () => {
+    const at = new Date(later);
+    const assigned = Conversation.create(props()).assign(agentA, 'user_1', at);
+
+    at.setUTCFullYear(2000);
+
+    expect(assigned.assignedAt).toEqual(later);
+    expect(assigned.updatedAt).toEqual(later);
+  });
+
+  describe('closed conversations', () => {
+    const closed = () => Conversation.create(props({ status: 'closed' }));
+
+    it('cannot be assigned', () => {
+      expect(() => closed().assign(agentA, 'user_1', later)).toThrow(ConversationClosedError);
+      expect(() => closed().assign(agentA, 'user_1', later)).toThrow(
+        'Conversation 65f1a2b3c4d5e6f708091a2b is closed and cannot be assigned',
+      );
+    });
+
+    it('cannot be reassigned, not even to the same agent', () => {
+      const withAgent = Object.assign(closed(), { assignedAgentId: agentA });
+
+      expect(() => withAgent.assign(agentB, 'user_1', later)).toThrow(ConversationClosedError);
+      expect(() => withAgent.assign(agentA, 'user_1', later)).toThrow(ConversationClosedError);
     });
   });
 });

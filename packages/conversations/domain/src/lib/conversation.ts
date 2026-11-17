@@ -67,4 +67,23 @@ export class Conversation implements IConversationEntity {
       new Date(props.now),
     );
   }
+
+  /**
+   * Assigns the conversation to an agent. Conversations are immutable, so this
+   * returns the assigned conversation rather than changing this one.
+   *
+   * - A closed conversation cannot be assigned, even to its current agent.
+   * - Assigning the current agent again changes nothing: the same instance
+   *   comes back, with `assignedAt`, `assignedBy` and `updatedAt` untouched.
+   * - Any other agent replaces the current one (the three assignment fields
+   *   are set together, `updatedAt` becomes `now`).
+   *
+   * The caller checks that `agentId` is a real agent of this workspace and
+   * that `assignedBy` may assign; the conversation does not know agents.
+   *
+   * @throws {ConversationClosedError} when the conversation is closed.
+   */
+  assign(_agentId: string, _assignedBy: string, _now: Date): Conversation {
+    throw new Error('not implemented');
+  }
 }

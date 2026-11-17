@@ -168,3 +168,29 @@ describe('Conversation.assign', () => {
     });
   });
 });
+
+describe('Conversation.restore', () => {
+  it('rebuilds an unassigned conversation, leaving the assignment fields absent', () => {
+    const entity = { ...Conversation.create(props()) };
+
+    const restored = Conversation.restore(entity);
+
+    expect(restored).toBeInstanceOf(Conversation);
+    expect(restored).toMatchObject({ id: '65f1a2b3c4d5e6f708091a2b', status: 'open', createdAt: now });
+    expect(restored.assignedAgentId).toBeUndefined();
+    expect(restored.assignedAt).toBeUndefined();
+    expect(restored.assignedBy).toBeUndefined();
+  });
+
+  it('rebuilds an assigned conversation with all its fields', () => {
+    const assigned = Conversation.create(props()).assign('65f1a2b3c4d5e6f708091a2c', 'user_1', now);
+
+    expect(Conversation.restore({ ...assigned })).toEqual(assigned);
+  });
+
+  it('can be assigned again after restoring', () => {
+    const restored = Conversation.restore({ ...Conversation.create(props()) });
+
+    expect(restored.assign('65f1a2b3c4d5e6f708091a2c', 'user_1', now).assignedBy).toBe('user_1');
+  });
+});

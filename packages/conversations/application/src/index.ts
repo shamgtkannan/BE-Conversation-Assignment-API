@@ -1,3 +1,4 @@
+export * from './lib/assign-conversation.use-case';
 export * from './lib/create-conversation.use-case';
 export * from './lib/get-conversation.use-case';
 export * from './lib/list-conversations.use-case';

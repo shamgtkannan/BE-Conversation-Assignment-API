@@ -70,6 +70,15 @@ export class Conversation implements IConversationEntity {
   }
 
   /**
+   * Rebuilds a conversation from its stored form, so storage can hand back a
+   * plain entity and the domain can still apply its behaviour (`assign`) to it.
+   * The stored data was validated when it was created, so nothing is re-checked.
+   */
+  static restore(_entity: IConversationEntity): Conversation {
+    throw new Error('not implemented');
+  }
+
+  /**
    * Assigns the conversation to an agent. Conversations are immutable, so this
    * returns the assigned conversation rather than changing this one.
    *

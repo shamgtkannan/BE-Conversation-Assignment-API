@@ -55,3 +55,14 @@ export interface Clock {
 }
 /** Injection token for {@link Clock}. */
 export const CLOCK = Symbol('CLOCK');
+
+/**
+ * Asks the agents side whether an agent exists. Conversations never import the
+ * agents context; the API wires an adapter that answers from it.
+ */
+export interface AgentLookup {
+  /** True when `agentId` is an agent of `workspaceId`. Other workspaces count as no. */
+  exists(workspaceId: string, agentId: string): Promise<boolean>;
+}
+/** Injection token for {@link AgentLookup}. */
+export const AGENT_LOOKUP = Symbol('AGENT_LOOKUP');

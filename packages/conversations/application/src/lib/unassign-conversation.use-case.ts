@@ -1,4 +1,12 @@
-import { IConversationEntity } from 'conversations-domain';
+import {
+  AssignmentNotPermittedError,
+  Conversation,
+  ConversationNotFoundError,
+  IConversationEntity,
+  InvalidConversationError,
+  isConversationId,
+} from 'conversations-domain';
+import { ASSIGNING_ROLES } from './assigning-roles';
 import { Clock, ConversationRepository } from './ports';
 
 /** Input of {@link UnassignConversationUseCase}. All of it except the id comes from the auth context. */
@@ -25,11 +33,37 @@ export interface UnassignConversationCommand {
  */
 export class UnassignConversationUseCase {
   constructor(
-    protected readonly conversations: ConversationRepository,
-    protected readonly clock: Clock,
+    private readonly conversations: ConversationRepository,
+    private readonly clock: Clock,
   ) {}
 
-  async execute(_command: UnassignConversationCommand): Promise<IConversationEntity> {
-    throw new Error('not implemented');
+  async execute({
+    workspaceId,
+    role,
+    conversationId,
+  }: UnassignConversationCommand): Promise<IConversationEntity> {
+    if (!ASSIGNING_ROLES.includes(role)) {
+      throw new AssignmentNotPermittedError(role);
+    }
+    // Check the format first, so a malformed id never reaches the database.
+    if (!isConversationId(conversationId)) {
+      throw new InvalidConversationError(
+        'id',
+        'Conversation id must be 24 lowercase hexadecimal characters',
+      );
+    }
+
+    const stored = await this.conversations.findById(workspaceId, conversationId);
+    if (!stored) {
+      throw new ConversationNotFoundError(conversationId);
+    }
+
+    const conversation = Conversation.restore(stored);
+    const unassigned = conversation.unassign(this.clock.now());
+    // The domain hands back the same instance when nothing changed: skip the write.
+    if (unassigned !== conversation) {
+      await this.conversations.save(unassigned);
+    }
+    return unassigned;
   }
 }

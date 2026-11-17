@@ -152,7 +152,7 @@ describe('UnassignConversationUseCase', () => {
   });
 
   describe('400 malformed id', () => {
-    it.each(['abc', '', 'ZZZZZZZZZZZZZZZZZZZZZZZZ', id(1).toUpperCase()])(
+    it.each(['abc', '', 'ZZZZZZZZZZZZZZZZZZZZZZZZ', id(255).toUpperCase()])(
       'rejects the id %j without reading the repository',
       async (badId) => {
         const find = jest.spyOn(repository, 'findById');

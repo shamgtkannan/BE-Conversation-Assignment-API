@@ -36,6 +36,8 @@ export class ConversationsController {
   ): Promise<ConversationPageResponse> {
     const page = await this.listConversationsUseCase.execute({
       workspaceId: auth.workspaceId,
+      status: query.status,
+      assignedAgentId: query.assignedAgentId,
       limit: query.limit,
       next: query.next,
       previous: query.previous,

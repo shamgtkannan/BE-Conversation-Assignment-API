@@ -86,12 +86,39 @@ export class MongooseConversationRepository implements ConversationRepository {
     return doc ? toEntity(doc) : null;
   }
 
+  /**
+   * Reads one page of a workspace's conversations (see the ordering contract on
+   * {@link ConversationRepository.list}). Both the sort and the cursor comparison
+   * use `createdAt` then `_id`, so conversations created at the same instant are
+   * neither skipped nor repeated. Each filter has an index that already ends in
+   * `createdAt, _id`, so a filtered page needs no extra sort.
+   */
   async list(
-    _workspaceId: string,
-    _filter: ConversationFilter,
-    _request: PageRequest,
+    workspaceId: string,
+    { status, assignedAgentId }: ConversationFilter,
+    request: PageRequest,
   ): Promise<IConversationEntity[]> {
-    throw new Error('not implemented');
+    const backward = request.direction === 'previous';
+    const order = backward ? 1 : -1;
+
+    const filter: mongoose.QueryFilter<ConversationDo> = { workspaceId };
+    if (status !== undefined) filter.status = status;
+    if (assignedAgentId !== undefined) filter.assignedAgentId = assignedAgentId;
+    if (request.cursor) {
+      const { createdAt, id } = request.cursor;
+      const _id = new mongoose.Types.ObjectId(id);
+      filter.$or = backward
+        ? [{ createdAt: { $gt: createdAt } }, { createdAt, _id: { $gt: _id } }]
+        : [{ createdAt: { $lt: createdAt } }, { createdAt, _id: { $lt: _id } }];
+    }
+
+    const docs = await this.model
+      .find(filter)
+      .sort({ createdAt: order, _id: order })
+      .limit(request.fetchSize)
+      .lean();
+
+    return docs.map(toEntity);
   }
 
   /**

@@ -71,7 +71,7 @@ ConversationDoSchema.set('toJSON', { getters: true });
 
 // Cursor-paginated list of a workspace: newest first, _id as tiebreaker.
 ConversationDoSchema.index({ workspaceId: 1, createdAt: -1, _id: -1 });
-// Filter by status.
-ConversationDoSchema.index({ workspaceId: 1, status: 1 });
-// Filter by assigned agent.
-ConversationDoSchema.index({ workspaceId: 1, assignedAgentId: 1 });
+// Filter by status, already in list order.
+ConversationDoSchema.index({ workspaceId: 1, status: 1, createdAt: -1, _id: -1 });
+// Filter by assigned agent, already in list order.
+ConversationDoSchema.index({ workspaceId: 1, assignedAgentId: 1, createdAt: -1, _id: -1 });

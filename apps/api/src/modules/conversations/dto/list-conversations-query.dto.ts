@@ -10,6 +10,18 @@ import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
  * format are validated by the domain.
  */
 export class ListConversationsQueryDto {
+  /** Only conversations with this status (`open` or `closed`). */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  status?: string;
+
+  /** Only conversations assigned to this agent. */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  assignedAgentId?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

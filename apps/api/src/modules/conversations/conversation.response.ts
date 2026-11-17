@@ -46,7 +46,11 @@ export interface ConversationPageResponse {
 
 /** Converts a page of domain conversations to its response shape. */
 export const toConversationPageResponse = (
-  _page: Page<IConversationEntity>,
-): ConversationPageResponse => {
-  throw new Error('not implemented');
-};
+  page: Page<IConversationEntity>,
+): ConversationPageResponse => ({
+  items: page.items.map(toConversationResponse),
+  hasNext: page.hasNext,
+  next: page.next,
+  hasPrevious: page.hasPrevious,
+  previous: page.previous,
+});

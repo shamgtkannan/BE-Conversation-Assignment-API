@@ -1,5 +1,17 @@
-import { IConversationEntity } from 'conversations-domain';
+import { isEntityId } from '@shared/core';
+import {
+  AssignedAgentNotFoundError,
+  AssignmentNotPermittedError,
+  Conversation,
+  ConversationNotFoundError,
+  IConversationEntity,
+  InvalidConversationError,
+  isConversationId,
+} from 'conversations-domain';
 import { AgentLookup, Clock, ConversationRepository } from './ports';
+
+/** Roles that may assign and unassign conversations. */
+const ASSIGNING_ROLES: readonly string[] = ['admin', 'manager'];
 
 /** Input of {@link AssignConversationUseCase}. All of it except the ids comes from the auth context. */
 export interface AssignConversationCommand {
@@ -29,12 +41,49 @@ export interface AssignConversationCommand {
  */
 export class AssignConversationUseCase {
   constructor(
-    protected readonly conversations: ConversationRepository,
-    protected readonly agents: AgentLookup,
-    protected readonly clock: Clock,
+    private readonly conversations: ConversationRepository,
+    private readonly agents: AgentLookup,
+    private readonly clock: Clock,
   ) {}
 
-  async execute(_command: AssignConversationCommand): Promise<IConversationEntity> {
-    throw new Error('not implemented');
+  async execute({
+    workspaceId,
+    userId,
+    role,
+    conversationId,
+    agentId,
+  }: AssignConversationCommand): Promise<IConversationEntity> {
+    if (!ASSIGNING_ROLES.includes(role)) {
+      throw new AssignmentNotPermittedError(role);
+    }
+    // Check the formats first, so a malformed id never reaches the database.
+    if (!isConversationId(conversationId)) {
+      throw new InvalidConversationError(
+        'id',
+        'Conversation id must be 24 lowercase hexadecimal characters',
+      );
+    }
+    if (!isEntityId(agentId)) {
+      throw new InvalidConversationError(
+        'assignedAgentId',
+        'Assigned agent id must be 24 lowercase hexadecimal characters',
+      );
+    }
+
+    const stored = await this.conversations.findById(workspaceId, conversationId);
+    if (!stored) {
+      throw new ConversationNotFoundError(conversationId);
+    }
+    if (!(await this.agents.exists(workspaceId, agentId))) {
+      throw new AssignedAgentNotFoundError(agentId);
+    }
+
+    const conversation = Conversation.restore(stored);
+    const assigned = conversation.assign(agentId, userId, this.clock.now());
+    // The domain hands back the same instance when nothing changed: skip the write.
+    if (assigned !== conversation) {
+      await this.conversations.save(assigned);
+    }
+    return assigned;
   }
 }

@@ -3,6 +3,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { InvalidPageRequestError, Page } from '@shared/core';
 import {
+  AssignConversationUseCase,
   CreateConversationUseCase,
   GetConversationUseCase,
   ListConversationsCommand,
@@ -58,6 +59,7 @@ describe('GET /conversations', () => {
         { provide: ListConversationsUseCase, useValue: { execute } },
         { provide: CreateConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: GetConversationUseCase, useValue: { execute: jest.fn() } },
+        { provide: AssignConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

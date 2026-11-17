@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import {
+  AssignConversationUseCase,
   CreateConversationCommand,
   CreateConversationUseCase,
   GetConversationUseCase,
@@ -48,6 +49,7 @@ describe('POST /conversations', () => {
         { provide: CreateConversationUseCase, useValue: { execute } },
         { provide: GetConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: ListConversationsUseCase, useValue: { execute: jest.fn() } },
+        { provide: AssignConversationUseCase, useValue: { execute: jest.fn() } },
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_FILTER, useClass: DomainExceptionFilter },
       ],

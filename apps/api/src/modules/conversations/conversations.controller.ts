@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import {
+  AssignConversationUseCase,
   CreateConversationUseCase,
   GetConversationUseCase,
   ListConversationsUseCase,
@@ -12,6 +13,7 @@ import {
   toConversationPageResponse,
   toConversationResponse,
 } from './conversation.response';
+import { AssignConversationDto } from './dto/assign-conversation.dto';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 
@@ -22,7 +24,24 @@ export class ConversationsController {
     private readonly createConversationUseCase: CreateConversationUseCase,
     private readonly getConversationUseCase: GetConversationUseCase,
     private readonly listConversationsUseCase: ListConversationsUseCase,
+    private readonly assignConversationUseCase: AssignConversationUseCase,
   ) {}
+
+  /**
+   * `PATCH /conversations/:id/assignment`: assigns the conversation to an agent
+   * of the caller's workspace (200), replacing any current agent. Only admins
+   * and managers may (403). A malformed id or body is 400; an unknown
+   * conversation or agent is 404; a closed conversation is 409.
+   */
+  @Patch(':id/assignment')
+  async assign(
+    @Param('id') _id: string,
+    @Body() _dto: AssignConversationDto,
+    @CurrentAuth() _auth: AuthContext,
+  ): Promise<ConversationResponse> {
+    void this.assignConversationUseCase;
+    throw new Error('not implemented');
+  }
 
   /**
    * `GET /conversations`: one page of the caller's workspace, newest first

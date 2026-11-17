@@ -1,6 +1,12 @@
 import { ArgumentsHost } from '@nestjs/common';
 import { FILTER_CATCH_EXCEPTIONS } from '@nestjs/common/constants';
-import { ConversationNotFoundError, InvalidConversationError } from 'conversations-domain';
+import {
+  AssignedAgentNotFoundError,
+  AssignmentNotPermittedError,
+  ConversationClosedError,
+  ConversationNotFoundError,
+  InvalidConversationError,
+} from 'conversations-domain';
 import { InvalidPageRequestError } from '@shared/core';
 import { AgentEmailAlreadyExistsError, AgentNotFoundError, InvalidAgentError } from 'agents-domain';
 import { DomainExceptionFilter } from './domain-exception.filter';
@@ -24,6 +30,9 @@ describe('DomainExceptionFilter', () => {
     ['an invalid page request', new InvalidPageRequestError('limit', 'Limit is out of range'), 400, 'Bad Request'],
     ['a missing agent', new AgentNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
     ['a missing conversation', new ConversationNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
+    ['a role that may not assign', new AssignmentNotPermittedError('agent'), 403, 'Forbidden'],
+    ['an agent to assign that does not exist', new AssignedAgentNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
+    ['a closed conversation', new ConversationClosedError('65f1a2b3c4d5e6f708091a2b'), 409, 'Conflict'],
     ['a duplicate agent email', new AgentEmailAlreadyExistsError('ada@example.com'), 409, 'Conflict'],
   ])('answers %s with %i', (_label, exception, statusCode, error) => {
     const { host, status, json } = fakeHost();
@@ -55,9 +64,12 @@ describe('DomainExceptionFilter', () => {
         InvalidPageRequestError,
         AgentNotFoundError,
         AgentEmailAlreadyExistsError,
+        AssignmentNotPermittedError,
+        AssignedAgentNotFoundError,
+        ConversationClosedError,
       ]),
     );
-    expect(caught).toHaveLength(6);
+    expect(caught).toHaveLength(9);
     expect(caught).not.toContain(Error);
   });
 });

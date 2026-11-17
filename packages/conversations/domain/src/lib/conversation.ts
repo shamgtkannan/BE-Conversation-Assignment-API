@@ -74,8 +74,18 @@ export class Conversation implements IConversationEntity {
    * plain entity and the domain can still apply its behaviour (`assign`) to it.
    * The stored data was validated when it was created, so nothing is re-checked.
    */
-  static restore(_entity: IConversationEntity): Conversation {
-    throw new Error('not implemented');
+  static restore(entity: IConversationEntity): Conversation {
+    return new Conversation(
+      entity.id,
+      entity.subject,
+      entity.status,
+      entity.workspaceId,
+      new Date(entity.createdAt),
+      new Date(entity.updatedAt),
+      entity.assignedAgentId,
+      entity.assignedAt && new Date(entity.assignedAt),
+      entity.assignedBy,
+    );
   }
 
   /**

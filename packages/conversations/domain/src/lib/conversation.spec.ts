@@ -194,3 +194,78 @@ describe('Conversation.restore', () => {
     expect(restored.assign('65f1a2b3c4d5e6f708091a2c', 'user_1', now).assignedBy).toBe('user_1');
   });
 });
+
+describe('Conversation.unassign', () => {
+  const agentA = '65f1a2b3c4d5e6f708091a2c';
+  const assignedAt = new Date('2026-11-13T09:00:00.000Z');
+  const later = new Date('2026-11-13T11:00:00.000Z');
+  const assigned = () => Conversation.create(props()).assign(agentA, 'user_1', assignedAt);
+
+  it('clears the three assignment fields and touches updatedAt', () => {
+    const unassigned = assigned().unassign(later);
+
+    expect(unassigned.assignedAgentId).toBeUndefined();
+    expect(unassigned.assignedAt).toBeUndefined();
+    expect(unassigned.assignedBy).toBeUndefined();
+    expect(unassigned).toMatchObject({
+      id: '65f1a2b3c4d5e6f708091a2b',
+      subject: 'Unable to log in',
+      status: 'open',
+      workspaceId: 'workspace_1',
+      createdAt: now,
+      updatedAt: later,
+    });
+  });
+
+  it('leaves the original conversation untouched', () => {
+    const original = assigned();
+
+    original.unassign(later);
+
+    expect(original).toMatchObject({ assignedAgentId: agentA, updatedAt: assignedAt });
+  });
+
+  it('changes nothing for a conversation nobody is assigned to', () => {
+    const fresh = Conversation.create(props());
+
+    const result = fresh.unassign(later);
+
+    expect(result).toBe(fresh);
+    expect(result.updatedAt).toEqual(now);
+  });
+
+  it('changes nothing when unassigned twice', () => {
+    const once = assigned().unassign(later);
+
+    expect(once.unassign(new Date('2026-11-13T12:00:00.000Z'))).toBe(once);
+  });
+
+  it('is allowed on a closed conversation, because only assigning is frozen', () => {
+    const closedAndAssigned = Object.assign(Conversation.create(props({ status: 'closed' })), {
+      assignedAgentId: agentA,
+      assignedAt,
+      assignedBy: 'user_1',
+    });
+
+    const result = closedAndAssigned.unassign(later);
+
+    expect(result.status).toBe('closed');
+    expect(result.assignedAgentId).toBeUndefined();
+    expect(result.updatedAt).toEqual(later);
+  });
+
+  it('copies the date it is given, so the caller cannot change it afterwards', () => {
+    const at = new Date(later);
+    const result = assigned().unassign(at);
+
+    at.setUTCFullYear(2000);
+
+    expect(result.updatedAt).toEqual(later);
+  });
+
+  it('can be assigned again afterwards', () => {
+    const again = assigned().unassign(later).assign(agentA, 'user_2', later);
+
+    expect(again).toMatchObject({ assignedAgentId: agentA, assignedBy: 'user_2', assignedAt: later });
+  });
+});

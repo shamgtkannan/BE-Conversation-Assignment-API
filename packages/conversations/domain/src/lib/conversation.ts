@@ -89,6 +89,21 @@ export class Conversation implements IConversationEntity {
   }
 
   /**
+   * Removes the current assignment. Conversations are immutable, so this
+   * returns the unassigned conversation rather than changing this one.
+   *
+   * - The three assignment fields are cleared together (absent, not `null`) and
+   *   `updatedAt` becomes `now`.
+   * - A conversation nobody is assigned to comes back as the same instance,
+   *   untouched, so callers can skip the write.
+   * - Unlike assigning, this is allowed on a closed conversation: the rule that
+   *   closed conversations are frozen covers assigning and reassigning only.
+   */
+  unassign(_now: Date): Conversation {
+    throw new Error('not implemented');
+  }
+
+  /**
    * Assigns the conversation to an agent. Conversations are immutable, so this
    * returns the assigned conversation rather than changing this one.
    *

@@ -1,4 +1,5 @@
-import { Agent, IAgentEntity, PageRequest } from 'agents-domain';
+import { PageRequest } from '@shared/core';
+import { Agent, IAgentEntity } from 'agents-domain';
 
 /**
  * Storage for agents. Implemented in `agents-infra`; the application layer only

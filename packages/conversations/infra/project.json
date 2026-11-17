@@ -7,6 +7,13 @@
     "scope:conversations",
     "layer:infra"
   ],
-  "// targets": "to see all targets run: nx show project conversations-infra --web",
-  "targets": {}
+  "targets": {
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "jest --config packages/conversations/infra/jest.integration.config.js",
+        "cwd": "{workspaceRoot}"
+      }
+    }
+  }
 }

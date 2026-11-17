@@ -1,1 +1,8 @@
-export {};
+export * from './lib/conversation';
+export * from './lib/conversation-id';
+export * from './lib/conversation.entity';
+export * from './lib/exceptions/conversation-not-found.error';
+export * from './lib/exceptions/invalid-conversation.error';
+export * from './lib/exceptions/conversation-closed.error';
+export * from './lib/exceptions/assigned-agent-not-found.error';
+export * from './lib/exceptions/assignment-not-permitted.error';

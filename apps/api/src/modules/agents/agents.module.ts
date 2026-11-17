@@ -41,5 +41,7 @@ import { AgentsController } from './agents.controller';
       inject: [AGENT_REPOSITORY],
     },
   ],
+  // The conversations feature asks it whether an agent exists.
+  exports: [GetAgentUseCase],
 })
 export class AgentsModule {}

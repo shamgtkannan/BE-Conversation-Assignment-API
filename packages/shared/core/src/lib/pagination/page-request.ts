@@ -1,5 +1,5 @@
 import { InvalidPageRequestError } from '../exceptions/invalid-page-request.error';
-import { AgentCursor, decodeCursor } from './agent-cursor';
+import { Cursor, decodeCursor } from './cursor';
 
 /** Page size used when the caller gives none. */
 export const DEFAULT_LIMIT = 20;
@@ -8,9 +8,9 @@ export const MAX_LIMIT = 100;
 
 /**
  * Which way to read from the cursor:
- * - `first`: no cursor, start at the newest agent.
- * - `next`: agents older than the cursor.
- * - `previous`: agents newer than the cursor.
+ * - `first`: no cursor, start at the newest item.
+ * - `next`: items older than the cursor.
+ * - `previous`: items newer than the cursor.
  */
 export type PageDirection = 'first' | 'next' | 'previous';
 
@@ -26,7 +26,7 @@ export class PageRequest {
   private constructor(
     readonly limit: number,
     readonly direction: PageDirection,
-    readonly cursor: AgentCursor | undefined,
+    readonly cursor: Cursor | undefined,
   ) {}
 
   /**

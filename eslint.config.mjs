@@ -27,8 +27,9 @@ export default [
                     ],
                     depConstraints: [
                         { sourceTag: "scope:app", onlyDependOnLibsWithTags: ["*"] },
-                        { sourceTag: "scope:agents", onlyDependOnLibsWithTags: ["scope:agents"] },
-                        { sourceTag: "scope:conversations", onlyDependOnLibsWithTags: ["scope:conversations"] },
+                        { sourceTag: "scope:agents", onlyDependOnLibsWithTags: ["scope:agents", "scope:shared"] },
+                        { sourceTag: "scope:conversations", onlyDependOnLibsWithTags: ["scope:conversations", "scope:shared"] },
+                        { sourceTag: "scope:shared", onlyDependOnLibsWithTags: ["scope:shared"] },
                         { sourceTag: "layer:domain", onlyDependOnLibsWithTags: ["layer:domain"] },
                         { sourceTag: "layer:application", onlyDependOnLibsWithTags: ["layer:domain", "layer:application"] },
                         { sourceTag: "layer:infra", onlyDependOnLibsWithTags: ["layer:domain", "layer:application", "layer:infra"] },

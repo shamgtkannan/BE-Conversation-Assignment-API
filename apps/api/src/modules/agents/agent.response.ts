@@ -1,4 +1,5 @@
-import { AgentPage, IAgentEntity } from 'agents-domain';
+import { Page } from '@shared/core';
+import { IAgentEntity } from 'agents-domain';
 
 /** JSON shape of an agent in API responses. Dates are ISO 8601 strings in UTC. */
 export interface AgentResponse {
@@ -30,7 +31,7 @@ export const toAgentResponse = (agent: IAgentEntity): AgentResponse => ({
 });
 
 /** Converts a page of domain agents to its response shape. */
-export const toAgentPageResponse = (page: AgentPage): AgentPageResponse => ({
+export const toAgentPageResponse = (page: Page<IAgentEntity>): AgentPageResponse => ({
   items: page.items.map(toAgentResponse),
   hasNext: page.hasNext,
   next: page.next,

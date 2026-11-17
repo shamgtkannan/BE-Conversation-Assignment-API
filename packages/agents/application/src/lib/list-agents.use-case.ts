@@ -1,4 +1,5 @@
-import { AgentPage, PageRequest, buildAgentPage } from 'agents-domain';
+import { Page, PageRequest, buildPage } from '@shared/core';
+import { IAgentEntity } from 'agents-domain';
 import { AgentRepository } from './ports';
 
 /** Input of {@link ListAgentsUseCase}. */
@@ -18,10 +19,10 @@ export interface ListAgentsCommand {
 export class ListAgentsUseCase {
   constructor(private readonly agents: AgentRepository) {}
 
-  async execute({ workspaceId, limit, next, previous }: ListAgentsCommand): Promise<AgentPage> {
+  async execute({ workspaceId, limit, next, previous }: ListAgentsCommand): Promise<Page<IAgentEntity>> {
     // Validate first, so a bad request never reaches the database.
     const request = PageRequest.create({ limit, next, previous });
     const rows = await this.agents.list(workspaceId, request);
-    return buildAgentPage(rows, request);
+    return buildPage(rows, request);
   }
 }

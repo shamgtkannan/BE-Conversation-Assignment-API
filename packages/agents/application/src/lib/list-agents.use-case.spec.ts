@@ -1,4 +1,5 @@
-import { Agent, IAgentEntity, InvalidPageRequestError } from 'agents-domain';
+import { InvalidPageRequestError } from '@shared/core';
+import { Agent, IAgentEntity } from 'agents-domain';
 import { ListAgentsUseCase } from './list-agents.use-case';
 import { InMemoryAgentRepository } from './testing/in-memory-agent.repository';
 

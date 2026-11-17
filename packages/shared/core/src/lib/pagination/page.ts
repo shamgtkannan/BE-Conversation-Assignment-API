@@ -1,18 +1,23 @@
-import { IAgentEntity } from '../agent.entity';
-import { encodeCursor } from './agent-cursor';
+import { encodeCursor } from './cursor';
 import { PageRequest } from './page-request';
 
-/** One page of agents, newest first, with opaque tokens to move in both directions. */
-export interface AgentPage {
-  items: IAgentEntity[];
+/** What a page needs of its items: an id and a creation time, the two sort keys. */
+export interface Pageable {
+  id: string;
+  createdAt: Date;
+}
+
+/** One page of items, newest first, with opaque tokens to move in both directions. */
+export interface Page<T extends Pageable> {
+  items: T[];
   hasNext: boolean;
   next: string | null;
   hasPrevious: boolean;
   previous: string | null;
 }
 
-const tokenFor = (agent: IAgentEntity): string =>
-  encodeCursor({ createdAt: agent.createdAt, id: agent.id });
+const tokenFor = (item: Pageable): string =>
+  encodeCursor({ createdAt: item.createdAt, id: item.id });
 
 /**
  * Builds a page from the rows a repository fetched with `request.fetchSize`.
@@ -25,7 +30,7 @@ const tokenFor = (agent: IAgentEntity): string =>
  * Moving in a direction implies the opposite direction has rows (the cursor
  * itself), so `hasPrevious` after `next` and `hasNext` after `previous` are true.
  */
-export const buildAgentPage = (rows: IAgentEntity[], request: PageRequest): AgentPage => {
+export const buildPage = <T extends Pageable>(rows: T[], request: PageRequest): Page<T> => {
   const hasMoreBeyond = rows.length > request.limit;
   const kept = rows.slice(0, request.limit);
   const movingBack = request.direction === 'previous';

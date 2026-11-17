@@ -12,6 +12,7 @@ import * as mongoose from 'mongoose';
 import * as os from 'os';
 import { ConversationRepositoryModule } from './conversation-repository.module';
 import { ConversationDo } from './schema';
+import { applyValidator, conversationValidator } from './validator';
 
 const hosts = process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
 const replicaSet = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
@@ -434,6 +435,140 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
       expect(keys).toContainEqual({ workspaceId: 1, createdAt: -1, _id: -1 });
       expect(keys).toContainEqual({ workspaceId: 1, status: 1, createdAt: -1, _id: -1 });
       expect(keys).toContainEqual({ workspaceId: 1, assignedAgentId: 1, createdAt: -1, _id: -1 });
+    });
+  });
+
+  describe('collection validator (documents written straight to MongoDB, bypassing the repository)', () => {
+    const agentId = '65f1a2b3c4d5e6f708091a2b';
+    const base = () => ({
+      workspaceId: 'workspace_1',
+      subject: 'Unable to log in',
+      status: 'open',
+      createdAt: now,
+      updatedAt: now,
+    });
+    const assigned = () => ({ assignedAgentId: agentId, assignedAt: now, assignedBy: 'user_123' });
+    /** MongoDB's "document failed validation" error code. */
+    const FAILED_VALIDATION = 121;
+    const insert = (doc: object) => model.collection.insertOne(doc);
+    const database = () => {
+      if (!model.db.db) throw new Error('MongoDB connection is not ready');
+      return model.db.db;
+    };
+
+    it('is set on the collection', async () => {
+      const [info] = await database().listCollections({ name: 'conversations' }, { nameOnly: false }).toArray();
+
+      expect((info.options as { validator?: unknown }).validator).toEqual(conversationValidator);
+    });
+
+    it('accepts an unassigned and a fully assigned conversation', async () => {
+      await expect(insert(base())).resolves.toBeDefined();
+      await expect(insert({ ...base(), ...assigned() })).resolves.toBeDefined();
+    });
+
+    it.each([
+      ['only the agent id', { assignedAgentId: agentId }],
+      ['the agent id and the time, without who', { assignedAgentId: agentId, assignedAt: now }],
+      ['only who assigned', { assignedBy: 'user_123' }],
+      ['only the time', { assignedAt: now }],
+    ])('rejects a partly assigned conversation: %s', async (_label, partial) => {
+      await expect(insert({ ...base(), ...partial })).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+
+    it.each([
+      ['an unknown status', { status: 'pending' }],
+      ['a blank subject', { subject: '   ' }],
+      ['an empty subject', { subject: '' }],
+      ['an empty workspace', { workspaceId: '' }],
+      ['a status of the wrong type', { status: 1 }],
+      ['an agent id that is not an id', { ...assigned(), assignedAgentId: 'agent_456' }],
+      ['null assignment fields', { assignedAgentId: null, assignedAt: null, assignedBy: null }],
+      ['a field the schema does not know', { extra: 'x' }],
+      ['an empty assignedBy', { ...assigned(), assignedBy: '' }],
+    ])('rejects %s', async (_label, override) => {
+      await expect(insert({ ...base(), ...override })).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+
+    it('rejects a document with a required field missing', async () => {
+      const withoutSubject: Record<string, unknown> = { ...base() };
+      delete withoutSubject['subject'];
+
+      await expect(insert(withoutSubject)).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+
+    it('rejects an update that would leave the assignment half-cleared, and accepts clearing all of it', async () => {
+      const { insertedId } = await insert({ ...base(), ...assigned() });
+
+      await expect(
+        model.collection.updateOne({ _id: insertedId }, { $unset: { assignedAgentId: '' } }),
+      ).rejects.toMatchObject({ code: FAILED_VALIDATION });
+      await expect(
+        model.collection.updateOne(
+          { _id: insertedId },
+          { $unset: { assignedAgentId: '', assignedAt: '', assignedBy: '' } },
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejects a repository replace that is made to violate it', async () => {
+      const { insertedId } = await insert({ ...base(), ...assigned() });
+
+      await expect(
+        model.collection.replaceOne({ _id: insertedId }, { ...base(), assignedBy: 'user_123' }),
+      ).rejects.toMatchObject({ code: FAILED_VALIDATION });
+    });
+
+    it('can be applied again, and to a collection that already holds older documents', async () => {
+      const db = database();
+      const name = 'validator_probe_conversations';
+      await db.createCollection(name);
+      const legacy = db.collection(name);
+      await legacy.insertOne({ anything: 'goes', assignedBy: 'only-this' });
+
+      await applyValidator(db, name, conversationValidator);
+      await applyValidator(db, name, conversationValidator);
+
+      expect(await legacy.countDocuments()).toBe(1);
+      await expect(legacy.insertOne({ ...base(), status: 'pending' })).rejects.toMatchObject({
+        code: FAILED_VALIDATION,
+      });
+    });
+  });
+
+  describe('starting against a database that already holds older documents', () => {
+    const legacyDb = dbName.replace(/_test$/, '_legacy_test');
+    const uri = `mongodb://${hosts}`;
+    const options = {
+      dbName: legacyDb,
+      replicaSet,
+      serverSelectionTimeoutMS: 5000,
+      runtimeAdapters: { os },
+    };
+
+    it('starts, sets the validator and builds the indexes, and keeps the older documents', async () => {
+      // An older database: the collection exists with a document that breaks the new rules, and has no indexes.
+      const seed = await mongoose.createConnection(uri, options).asPromise();
+      await seed.collection('conversations').insertOne({ workspaceId: 'w', subject: 'old', status: 'open', assignedBy: 'only-this', createdAt: now, updatedAt: now });
+      await seed.close();
+
+      const legacyModule = await Test.createTestingModule({
+        imports: [MongooseModule.forRoot(uri, options), ConversationRepositoryModule],
+      }).compile();
+      try {
+        await legacyModule.init();
+
+        const legacyModel = legacyModule.get<mongoose.Model<ConversationDo>>(getModelToken(ConversationDo.name));
+        const legacyDatabase = legacyModel.db.db;
+        if (!legacyDatabase) throw new Error('MongoDB connection is not ready');
+        const [info] = await legacyDatabase.listCollections({ name: 'conversations' }, { nameOnly: false }).toArray();
+        expect((info.options as { validator?: unknown }).validator).toBeDefined();
+        expect((await legacyModel.collection.indexes()).map((index) => index.key)).toContainEqual({ workspaceId: 1, createdAt: -1, _id: -1 });
+        expect(await legacyModel.countDocuments()).toBe(1);
+      } finally {
+        await legacyModule.get<mongoose.Model<ConversationDo>>(getModelToken(ConversationDo.name)).db.dropDatabase();
+        await legacyModule.close();
+      }
     });
   });
 });

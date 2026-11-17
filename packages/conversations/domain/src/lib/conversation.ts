@@ -3,6 +3,7 @@ import {
   ConversationStatus,
   IConversationEntity,
 } from './conversation.entity';
+import { ConversationClosedError } from './exceptions/conversation-closed.error';
 import { InvalidConversationError } from './exceptions/invalid-conversation.error';
 
 /** Values needed to create a new conversation. */
@@ -83,7 +84,23 @@ export class Conversation implements IConversationEntity {
    *
    * @throws {ConversationClosedError} when the conversation is closed.
    */
-  assign(_agentId: string, _assignedBy: string, _now: Date): Conversation {
-    throw new Error('not implemented');
+  assign(agentId: string, assignedBy: string, now: Date): Conversation {
+    if (this.status === 'closed') {
+      throw new ConversationClosedError(this.id);
+    }
+    if (this.assignedAgentId === agentId) {
+      return this;
+    }
+    return new Conversation(
+      this.id,
+      this.subject,
+      this.status,
+      this.workspaceId,
+      this.createdAt,
+      new Date(now),
+      agentId,
+      new Date(now),
+      assignedBy,
+    );
   }
 }

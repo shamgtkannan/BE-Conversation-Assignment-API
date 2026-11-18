@@ -27,13 +27,30 @@ export interface AssignmentHistoryPageResponse {
 }
 
 /**
- * Converts a page of history lines to its response shape.
- *
- * STUB: not implemented yet.
+ * Converts a history line to its response shape. Listing every field keeps stray
+ * properties (the event id, the workspace) off the wire, and turns the domain's
+ * "absent" agent fields into the explicit `null` the API contract promises.
  */
+export const toAssignmentHistoryEntryResponse = (
+  entry: IAssignmentHistoryEntity,
+): AssignmentHistoryEntryResponse => ({
+  id: entry.id,
+  conversationId: entry.conversationId,
+  action: entry.action,
+  previousAgentId: entry.previousAgentId ?? null,
+  newAgentId: entry.newAgentId ?? null,
+  performedBy: entry.performedBy,
+  occurredAt: entry.createdAt.toISOString(),
+  version: entry.version,
+});
+
+/** Converts a page of history lines to its response shape. */
 export const toAssignmentHistoryPageResponse = (
   page: Page<IAssignmentHistoryEntity>,
-): AssignmentHistoryPageResponse => {
-  void page;
-  throw new Error('not implemented');
-};
+): AssignmentHistoryPageResponse => ({
+  items: page.items.map(toAssignmentHistoryEntryResponse),
+  hasNext: page.hasNext,
+  next: page.next,
+  hasPrevious: page.hasPrevious,
+  previous: page.previous,
+});

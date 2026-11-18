@@ -4,3 +4,7 @@ export * from './lib/repositories/conversation/object-id-generator';
 export * from './lib/repositories/conversation/schema';
 export * from './lib/events/kafka-event-publisher';
 export * from './lib/events/kafka-topics';
+export * from './lib/events/kafka-event-decoder';
+export * from './lib/repositories/assignment-history/assignment-history-repository.module';
+export * from './lib/repositories/assignment-history/assignment-history.repository';
+export * from './lib/repositories/assignment-history/schema';

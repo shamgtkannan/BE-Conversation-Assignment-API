@@ -1,5 +1,10 @@
 import { PageRequest } from '@shared/core';
-import { Conversation, ConversationStatus, IConversationEntity } from 'conversations-domain';
+import {
+  Conversation,
+  ConversationEvent,
+  ConversationStatus,
+  IConversationEntity,
+} from 'conversations-domain';
 
 /** Optional filters of the conversation list; both combine with AND. */
 export interface ConversationFilter {
@@ -74,3 +79,14 @@ export interface AgentLookup {
 }
 /** Injection token for {@link AgentLookup}. */
 export const AGENT_LOOKUP = Symbol('AGENT_LOOKUP');
+
+/**
+ * Announces what happened to a conversation. Implemented in the outer layers
+ * (a message broker, later); the use cases only know this interface.
+ */
+export interface EventPublisher {
+  /** Hands the event over. Resolves once the implementation has accepted it. */
+  publish(event: ConversationEvent): Promise<void>;
+}
+/** Injection token for {@link EventPublisher}. */
+export const EVENT_PUBLISHER = Symbol('EVENT_PUBLISHER');

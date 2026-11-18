@@ -43,6 +43,7 @@ export class ConversationsController {
   ): Promise<ConversationResponse> {
     const conversation = await this.unassignConversationUseCase.execute({
       workspaceId: auth.workspaceId,
+      userId: auth.userId,
       role: auth.role,
       conversationId: id,
     });

@@ -95,11 +95,12 @@ describe('DELETE /conversations/:id/assignment', () => {
       });
     });
 
-    it('takes workspace and role from the auth headers, the id from the path', async () => {
+    it('takes workspace, user and role from the auth headers, the id from the path', async () => {
       await del();
 
       expect(execute).toHaveBeenCalledWith({
         workspaceId: 'workspace_1',
+        userId: 'user_123',
         role: 'manager',
         conversationId,
       });

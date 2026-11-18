@@ -9,7 +9,7 @@ import {
   isConversationId,
 } from 'conversations-domain';
 import { ASSIGNING_ROLES } from './assigning-roles';
-import { AgentLookup, Clock, ConversationRepository } from './ports';
+import { AgentLookup, Clock, ConversationRepository, EventPublisher, IdGenerator } from './ports';
 
 /** Input of {@link AssignConversationUseCase}. All of it except the ids comes from the auth context. */
 export interface AssignConversationCommand {
@@ -44,6 +44,9 @@ export class AssignConversationUseCase {
     private readonly conversations: ConversationRepository,
     private readonly agents: AgentLookup,
     private readonly clock: Clock,
+    // STUB: events and ids are not used yet.
+    private readonly events: EventPublisher,
+    private readonly ids: IdGenerator,
   ) {}
 
   async execute({

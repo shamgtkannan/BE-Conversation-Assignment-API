@@ -11,6 +11,7 @@ import {
 } from './unassign-conversation.use-case';
 import { BarrierConversationRepository } from './testing/barrier-conversation.repository';
 import { InMemoryConversationRepository } from './testing/in-memory-conversation.repository';
+import { InMemoryEventPublisher } from './testing/in-memory-event-publisher';
 
 const id = (n: number) => n.toString(16).padStart(24, '0');
 const created = new Date('2026-11-13T08:00:00.000Z');
@@ -22,12 +23,15 @@ const agentId = id(100);
 
 describe('UnassignConversationUseCase', () => {
   let repository: InMemoryConversationRepository;
+  let events: InMemoryEventPublisher;
+  let eventCounter: number;
   let useCase: UnassignConversationUseCase;
 
   const command = (
     overrides: Partial<UnassignConversationCommand> = {},
   ): UnassignConversationCommand => ({
     workspaceId: 'workspace_1',
+    userId: 'user_2',
     role: 'manager',
     conversationId,
     ...overrides,
@@ -60,9 +64,16 @@ describe('UnassignConversationUseCase', () => {
   };
   const stored = () => repository.findById('workspace_1', conversationId);
 
+  const build = (conversations: InMemoryConversationRepository) =>
+    new UnassignConversationUseCase(conversations, { now: () => unassignTime }, events, {
+      next: () => `event_${++eventCounter}`,
+    });
+
   beforeEach(() => {
     repository = new InMemoryConversationRepository();
-    useCase = new UnassignConversationUseCase(repository, { now: () => unassignTime });
+    events = new InMemoryEventPublisher();
+    eventCounter = 0;
+    useCase = build(repository);
   });
 
   describe('unassigning', () => {
@@ -203,7 +214,7 @@ describe('UnassignConversationUseCase', () => {
           now: created,
         }).assign(agentId, 'user_1', assignTime),
       );
-      const race = new UnassignConversationUseCase(racing, { now: () => unassignTime });
+      const race = build(racing);
 
       const outcomes = await Promise.allSettled([race.execute(command()), race.execute(command())]);
 
@@ -214,6 +225,99 @@ describe('UnassignConversationUseCase', () => {
         ConversationConcurrentModificationError,
       );
       expect((await racing.findById('workspace_1', conversationId))?.version).toBe(2);
+    });
+  });
+
+  describe('events', () => {
+    it('publishes conversation.unassigned.v1 naming the removed agent and the user', async () => {
+      await seed();
+
+      await useCase.execute(command());
+
+      expect(events.published).toEqual([
+        {
+          type: 'conversation.unassigned.v1',
+          eventId: 'event_1',
+          occurredAt: unassignTime,
+          workspaceId: 'workspace_1',
+          conversationId,
+          previousAgentId: agentId,
+          unassignedBy: 'user_2',
+          version: 2,
+        },
+      ]);
+    });
+
+    it('publishes after the conversation is saved, never before', async () => {
+      await seed();
+      const save = jest.spyOn(repository, 'save');
+      const publish = jest.spyOn(events, 'publish');
+
+      await useCase.execute(command());
+
+      expect(save.mock.invocationCallOrder[0]).toBeLessThan(publish.mock.invocationCallOrder[0]);
+    });
+
+    it('publishes nothing when nobody is assigned', async () => {
+      await seed({ assigned: false });
+
+      await useCase.execute(command());
+
+      expect(events.published).toEqual([]);
+    });
+
+    it('publishes nothing the second time when unassigned twice', async () => {
+      await seed();
+      await useCase.execute(command());
+
+      await useCase.execute(command());
+
+      expect(events.published).toHaveLength(1);
+    });
+
+    it('publishes for a closed conversation, because unassigning it is allowed', async () => {
+      await seed({ status: 'closed' });
+
+      await useCase.execute(command());
+
+      expect(events.published).toHaveLength(1);
+    });
+
+    it.each([
+      ['a role that may not unassign', { role: 'agent' }],
+      ['a malformed conversation id', { conversationId: 'conv_123' }],
+      ['a conversation that does not exist', { conversationId: id(999) }],
+    ])('publishes nothing for %s', async (_label, overrides) => {
+      await seed();
+
+      await expect(useCase.execute(command(overrides))).rejects.toBeDefined();
+
+      expect(events.published).toEqual([]);
+    });
+
+    it("publishes nothing for another workspace's conversation", async () => {
+      await seed({ workspaceId: 'workspace_2' });
+
+      await expect(useCase.execute(command())).rejects.toBeInstanceOf(ConversationNotFoundError);
+
+      expect(events.published).toEqual([]);
+    });
+
+    it('publishes only the winner of two simultaneous removals', async () => {
+      const racing = new BarrierConversationRepository(2);
+      await racing.save(
+        Conversation.create({
+          id: conversationId,
+          workspaceId: 'workspace_1',
+          subject: 'Help',
+          now: created,
+        }).assign(agentId, 'user_1', assignTime),
+      );
+      const race = build(racing);
+
+      await Promise.allSettled([race.execute(command()), race.execute(command())]);
+
+      expect(events.published).toHaveLength(1);
     });
   });
 });

@@ -7,12 +7,14 @@ import {
   isConversationId,
 } from 'conversations-domain';
 import { ASSIGNING_ROLES } from './assigning-roles';
-import { Clock, ConversationRepository } from './ports';
+import { Clock, ConversationRepository, EventPublisher, IdGenerator } from './ports';
 
 /** Input of {@link UnassignConversationUseCase}. All of it except the id comes from the auth context. */
 export interface UnassignConversationCommand {
   /** Workspace of the authenticated caller. */
   workspaceId: string;
+  /** Authenticated user removing the assignment; recorded in the published event. */
+  userId: string;
   /** Role of the authenticated user. Only `admin` and `manager` may unassign. */
   role: string;
   conversationId: string;
@@ -37,6 +39,9 @@ export class UnassignConversationUseCase {
   constructor(
     private readonly conversations: ConversationRepository,
     private readonly clock: Clock,
+    // STUB: events and ids are not used yet.
+    private readonly events: EventPublisher,
+    private readonly ids: IdGenerator,
   ) {}
 
   async execute({

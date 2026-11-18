@@ -8,6 +8,8 @@ import {
   Clock,
   ConversationRepository,
   CreateConversationUseCase,
+  EVENT_PUBLISHER,
+  EventPublisher,
   GetConversationUseCase,
   ID_GENERATOR,
   IdGenerator,
@@ -16,6 +18,7 @@ import {
 } from 'conversations-application';
 import { GetAgentUseCase } from 'agents-application';
 import { ConversationRepositoryModule } from 'conversations-infra';
+import { NoopEventPublisher } from '../../common/noop-event-publisher';
 import { SystemClock } from '../../common/system-clock';
 import { AgentsModule } from '../agents/agents.module';
 import { AgentsBackedAgentLookup } from './agents-backed-agent-lookup';
@@ -31,6 +34,7 @@ import { ConversationsController } from './conversations.controller';
   controllers: [ConversationsController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
+    { provide: EVENT_PUBLISHER, useClass: NoopEventPublisher },
     {
       provide: CreateConversationUseCase,
       useFactory: (conversations: ConversationRepository, ids: IdGenerator, clock: Clock) =>
@@ -50,15 +54,24 @@ import { ConversationsController } from './conversations.controller';
     },
     {
       provide: AssignConversationUseCase,
-      useFactory: (conversations: ConversationRepository, agents: AgentLookup, clock: Clock) =>
-        new AssignConversationUseCase(conversations, agents, clock),
-      inject: [CONVERSATION_REPOSITORY, AGENT_LOOKUP, CLOCK],
+      useFactory: (
+        conversations: ConversationRepository,
+        agents: AgentLookup,
+        clock: Clock,
+        events: EventPublisher,
+        ids: IdGenerator,
+      ) => new AssignConversationUseCase(conversations, agents, clock, events, ids),
+      inject: [CONVERSATION_REPOSITORY, AGENT_LOOKUP, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
     },
     {
       provide: UnassignConversationUseCase,
-      useFactory: (conversations: ConversationRepository, clock: Clock) =>
-        new UnassignConversationUseCase(conversations, clock),
-      inject: [CONVERSATION_REPOSITORY, CLOCK],
+      useFactory: (
+        conversations: ConversationRepository,
+        clock: Clock,
+        events: EventPublisher,
+        ids: IdGenerator,
+      ) => new UnassignConversationUseCase(conversations, clock, events, ids),
+      inject: [CONVERSATION_REPOSITORY, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
     },
     {
       provide: ListConversationsUseCase,

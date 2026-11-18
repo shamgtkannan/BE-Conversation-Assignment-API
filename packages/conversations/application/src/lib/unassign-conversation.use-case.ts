@@ -1,5 +1,6 @@
 import {
   AssignmentNotPermittedError,
+  CONVERSATION_UNASSIGNED_V1,
   Conversation,
   ConversationNotFoundError,
   IConversationEntity,
@@ -26,6 +27,9 @@ export interface UnassignConversationCommand {
  * nobody is assigned to is returned as it is and nothing is saved. A closed
  * conversation can be unassigned.
  *
+ * A real change is announced with a `conversation.unassigned.v1` event, published
+ * after the save. Nothing is published when nobody was assigned.
+ *
  * Checks run in this order, so a caller without the right never learns what exists:
  * role, id format, then the conversation.
  *
@@ -39,13 +43,13 @@ export class UnassignConversationUseCase {
   constructor(
     private readonly conversations: ConversationRepository,
     private readonly clock: Clock,
-    // STUB: events and ids are not used yet.
     private readonly events: EventPublisher,
     private readonly ids: IdGenerator,
   ) {}
 
   async execute({
     workspaceId,
+    userId,
     role,
     conversationId,
   }: UnassignConversationCommand): Promise<IConversationEntity> {
@@ -66,10 +70,23 @@ export class UnassignConversationUseCase {
     }
 
     const conversation = Conversation.restore(stored);
-    const unassigned = conversation.unassign(this.clock.now());
-    // The domain hands back the same instance when nothing changed: skip the write.
-    if (unassigned !== conversation) {
+    const now = this.clock.now();
+    const unassigned = conversation.unassign(now);
+    // The domain hands back the same instance when nothing changed: no write, no event.
+    if (unassigned !== conversation && stored.assignedAgentId !== undefined) {
       await this.conversations.save(unassigned, stored.version);
+      // shortcut: a crash between save and publish loses this event; closed by the
+      // command-id redelivery step (plan step 6).
+      await this.events.publish({
+        type: CONVERSATION_UNASSIGNED_V1,
+        eventId: this.ids.next(),
+        occurredAt: now,
+        workspaceId,
+        conversationId,
+        previousAgentId: stored.assignedAgentId,
+        unassignedBy: userId,
+        version: unassigned.version,
+      });
     }
     return unassigned;
   }

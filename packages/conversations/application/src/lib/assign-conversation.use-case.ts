@@ -2,6 +2,7 @@ import { isEntityId } from '@shared/core';
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
+  CONVERSATION_ASSIGNED_V1,
   Conversation,
   ConversationNotFoundError,
   IConversationEntity,
@@ -28,6 +29,9 @@ export interface AssignConversationCommand {
  * workspace, replacing any current agent. Assigning the current agent again is
  * a no-op: nothing is saved.
  *
+ * A real change is announced with a `conversation.assigned.v1` event, published
+ * after the save. Nothing is published when nothing changed.
+ *
  * Checks run in this order, so a caller without the right never learns what exists:
  * role, id formats, conversation, agent, then the conversation's own rules.
  *
@@ -44,7 +48,6 @@ export class AssignConversationUseCase {
     private readonly conversations: ConversationRepository,
     private readonly agents: AgentLookup,
     private readonly clock: Clock,
-    // STUB: events and ids are not used yet.
     private readonly events: EventPublisher,
     private readonly ids: IdGenerator,
   ) {}
@@ -82,10 +85,24 @@ export class AssignConversationUseCase {
     }
 
     const conversation = Conversation.restore(stored);
-    const assigned = conversation.assign(agentId, userId, this.clock.now());
-    // The domain hands back the same instance when nothing changed: skip the write.
+    const now = this.clock.now();
+    const assigned = conversation.assign(agentId, userId, now);
+    // The domain hands back the same instance when nothing changed: no write, no event.
     if (assigned !== conversation) {
       await this.conversations.save(assigned, stored.version);
+      // shortcut: a crash between save and publish loses this event; closed by the
+      // command-id redelivery step (plan step 6).
+      await this.events.publish({
+        type: CONVERSATION_ASSIGNED_V1,
+        eventId: this.ids.next(),
+        occurredAt: now,
+        workspaceId,
+        conversationId,
+        previousAgentId: stored.assignedAgentId ?? null,
+        agentId,
+        assignedBy: userId,
+        version: assigned.version,
+      });
     }
     return assigned;
   }

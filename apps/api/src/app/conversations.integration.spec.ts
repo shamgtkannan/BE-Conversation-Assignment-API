@@ -94,7 +94,7 @@ describe('POST /conversations (real app, real MongoDB)', () => {
     });
     // Absent in MongoDB (the API turns them into null), and no Mongoose version key.
     expect(Object.keys(document ?? {}).sort()).toEqual(
-      ['_id', 'createdAt', 'status', 'subject', 'updatedAt', 'workspaceId'].sort(),
+      ['_id', 'createdAt', 'status', 'subject', 'updatedAt', 'version', 'workspaceId'].sort(),
     );
   });
 

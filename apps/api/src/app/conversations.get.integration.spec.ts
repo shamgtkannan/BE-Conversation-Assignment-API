@@ -110,6 +110,7 @@ describe('GET /conversations/:id (real app, real MongoDB)', () => {
       assignedBy: 'user_123',
       createdAt: new Date('2026-11-13T08:30:00.000Z'),
       updatedAt: new Date('2026-11-13T09:00:00.000Z'),
+      version: 1,
     });
 
     const body = await (await get(id.toHexString())).json();

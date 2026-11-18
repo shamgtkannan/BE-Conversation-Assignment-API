@@ -434,4 +434,63 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
       expect((await unassign(id, {})).status).toBe(401);
     });
   });
+
+  describe('simultaneous requests', () => {
+    const agents = (count: number) =>
+      Promise.all(Array.from({ length: count }, (_, n) => createAgent(`Racer${n}`)));
+
+    it('answers only 200 or 409 and keeps the count of changes equal to the 200s', async () => {
+      const id = await createConversation();
+      const racers = await agents(10);
+
+      const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
+      const statuses = responses.map((response) => response.status);
+      const winners = await Promise.all(
+        responses.filter((response) => response.status === 200).map((r) => r.json() as Promise<ConversationJson>),
+      );
+
+      expect(statuses.every((status) => status === 200 || status === 409)).toBe(true);
+      expect(winners.length).toBeGreaterThanOrEqual(1);
+      expect(await stored(id)).toMatchObject({ version: winners.length });
+      const final = await read(id);
+      expect(winners.map((winner) => winner.assignedAgentId)).toContain(final.assignedAgentId);
+    });
+
+    it('lets a rejected request succeed when it is sent again', async () => {
+      const id = await createConversation();
+      const racers = await agents(10);
+      const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
+      const rejected = racers.find((_, n) => responses[n].status === 409);
+      if (rejected === undefined) return; // every request got its turn: nothing to retry
+
+      const retry = await assign(id, { agentId: rejected });
+
+      expect(retry.status).toBe(200);
+      expect(((await retry.json()) as ConversationJson).assignedAgentId).toBe(rejected);
+    });
+
+    it('answers a body that says what went wrong when a request loses', async () => {
+      const id = await createConversation();
+      const racers = await agents(10);
+      const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
+      const loser = responses.find((response) => response.status === 409);
+      if (!loser) return; // every request got its turn
+
+      expect(await loser.json()).toMatchObject({ statusCode: 409, error: 'Conflict' });
+    });
+
+    it('lets simultaneous removals through without leaving a half-cleared assignment', async () => {
+      const id = await createConversation();
+      await assign(id, { agentId: (await agents(1))[0] });
+
+      const responses = await Promise.all(Array.from({ length: 5 }, () => unassign(id)));
+
+      expect(responses.every((response) => response.status === 200 || response.status === 409)).toBe(true);
+      expect(responses.some((response) => response.status === 200)).toBe(true);
+      const document = await stored(id);
+      expect(document).not.toHaveProperty('assignedAgentId');
+      expect(document).not.toHaveProperty('assignedAt');
+      expect(document).not.toHaveProperty('assignedBy');
+    });
+  });
 });

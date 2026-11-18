@@ -7,7 +7,7 @@ import { MongooseModule, getModelToken } from '@nestjs/mongoose';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PageRequest, buildPage } from '@shared/core';
 import { CONVERSATION_REPOSITORY, ConversationFilter, ConversationRepository } from 'conversations-application';
-import { Conversation } from 'conversations-domain';
+import { Conversation, ConversationConcurrentModificationError } from 'conversations-domain';
 import * as mongoose from 'mongoose';
 import * as os from 'os';
 import { ConversationRepositoryModule } from './conversation-repository.module';
@@ -98,7 +98,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
 
       const stored = await rawDocument(conversation.id);
       expect(Object.keys(stored ?? {}).sort()).toEqual(
-        ['_id', 'createdAt', 'status', 'subject', 'updatedAt', 'workspaceId'].sort(),
+        ['_id', 'createdAt', 'status', 'subject', 'updatedAt', 'version', 'workspaceId'].sort(),
       );
     });
 
@@ -141,6 +141,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
         assignedBy: 'user_123',
         createdAt: now,
         updatedAt: now,
+        version: 0,
       });
 
       await repository.save(newConversation({ id: id.toHexString() }));
@@ -189,6 +190,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
         status: 'open',
         createdAt: now,
         updatedAt: now,
+        version: 0,
       });
       // Absent, not null and not a Mongoose property: the domain's "unassigned".
       expect(found?.assignedAgentId).toBeUndefined();
@@ -203,7 +205,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
       const found = await repository.findById('workspace_1', conversation.id);
 
       expect(Object.keys(found ?? {}).sort()).toEqual(
-        ['createdAt', 'id', 'status', 'subject', 'updatedAt', 'workspaceId'].sort(),
+        ['createdAt', 'id', 'status', 'subject', 'updatedAt', 'version', 'workspaceId'].sort(),
       );
     });
 
@@ -220,6 +222,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
         assignedBy: 'user_123',
         createdAt: now,
         updatedAt: assignedAt,
+        version: 1,
       });
 
       const found = await repository.findById('workspace_1', id.toHexString());
@@ -234,6 +237,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
         assignedBy: 'user_123',
         createdAt: now,
         updatedAt: assignedAt,
+        version: 1,
       });
       expect(found?.assignedAt).toBeInstanceOf(Date);
     });
@@ -310,6 +314,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
         status: 'open',
         createdAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
         updatedAt: new Date(Date.UTC(2026, 10, 13, 8, 3)),
+        version: 0,
       });
     });
 
@@ -428,6 +433,140 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
     });
   });
 
+  describe('save with an expected version', () => {
+    const agent = (n: number) => n.toString(16).padStart(24, '0');
+    /** Reads the conversation back the way a use case does, then assigns it. */
+    const readAndAssign = async (id: string, agentId: string) => {
+      const stored = await repository.findById('workspace_1', id);
+      if (!stored) throw new Error('missing');
+      return { stored, assigned: Conversation.restore(stored).assign(agentId, 'user_1', now) };
+    };
+
+    it('writes the change and stores the new version', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+
+      await repository.save(conversation.assign(agent(1), 'user_1', now), 0);
+
+      expect(await rawDocument(conversation.id)).toMatchObject({
+        assignedAgentId: agent(1),
+        version: 1,
+      });
+    });
+
+    it('stores the version as an integer', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+      await repository.save(conversation.assign(agent(1), 'user_1', now), 0);
+
+      const [{ type }] = await model.collection
+        .aggregate<{ type: string }>([
+          { $match: { _id: new mongoose.Types.ObjectId(conversation.id) } },
+          { $project: { type: { $type: '$version' } } },
+        ])
+        .toArray();
+
+      expect(type).toBe('int');
+    });
+
+    it('refuses a stale version and leaves the stored conversation as it was', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+      await repository.save(conversation.assign(agent(1), 'user_1', now), 0);
+
+      await expect(
+        repository.save(conversation.assign(agent(2), 'user_2', now), 0),
+      ).rejects.toBeInstanceOf(ConversationConcurrentModificationError);
+
+      expect(await rawDocument(conversation.id)).toMatchObject({
+        assignedAgentId: agent(1),
+        assignedBy: 'user_1',
+        version: 1,
+      });
+    });
+
+    it('refuses a version that is ahead of the stored one', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+
+      await expect(
+        repository.save(conversation.assign(agent(1), 'user_1', now), 5),
+      ).rejects.toBeInstanceOf(ConversationConcurrentModificationError);
+    });
+
+    it('does not create a conversation that does not exist, nor touch one of another workspace', async () => {
+      const missing = newConversation();
+      const other = newConversation({ workspaceId: 'workspace_2' });
+      await repository.save(other);
+
+      await expect(
+        repository.save(missing.assign(agent(1), 'user_1', now), 0),
+      ).rejects.toBeInstanceOf(ConversationConcurrentModificationError);
+      await expect(
+        repository.save(
+          Conversation.restore({ ...other, workspaceId: 'workspace_1' }).assign(agent(1), 'user_1', now),
+          0,
+        ),
+      ).rejects.toBeInstanceOf(ConversationConcurrentModificationError);
+
+      expect(await rawDocument(missing.id)).toBeNull();
+      expect(await rawDocument(other.id)).not.toHaveProperty('assignedAgentId');
+    });
+
+    it('treats a document stored before the version existed as version 0', async () => {
+      const id = new mongoose.Types.ObjectId();
+      await model.collection.insertOne(
+        { _id: id, workspaceId: 'workspace_1', subject: 'old', status: 'open', createdAt: now, updatedAt: now },
+        { bypassDocumentValidation: true },
+      );
+
+      const { stored, assigned } = await readAndAssign(id.toHexString(), agent(1));
+      await repository.save(assigned, stored.version);
+
+      expect(stored.version).toBe(0);
+      expect(await rawDocument(id.toHexString())).toMatchObject({ assignedAgentId: agent(1), version: 1 });
+    });
+
+    it('lets exactly one of ten changes through when all ten read the same version', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+      // Everyone reads before anyone saves, so all ten hold version 0.
+      const reads = await Promise.all(
+        Array.from({ length: 10 }, (_, n) => readAndAssign(conversation.id, agent(n + 1))),
+      );
+
+      const outcomes = await Promise.allSettled(
+        reads.map(({ stored, assigned }) => repository.save(assigned, stored.version).then(() => assigned)),
+      );
+
+      const winners = outcomes.filter((o): o is PromiseFulfilledResult<Conversation> => o.status === 'fulfilled');
+      const losers = outcomes.filter((o): o is PromiseRejectedResult => o.status === 'rejected');
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(9);
+      losers.forEach((loser) => expect(loser.reason).toBeInstanceOf(ConversationConcurrentModificationError));
+      expect(await rawDocument(conversation.id)).toMatchObject({
+        assignedAgentId: winners[0].value.assignedAgentId,
+        version: 1,
+      });
+    });
+
+    it('never loses a change when the requests are not in step: the version counts every success', async () => {
+      const conversation = newConversation();
+      await repository.save(conversation);
+
+      const outcomes = await Promise.allSettled(
+        Array.from({ length: 10 }, async (_, n) => {
+          const { stored, assigned } = await readAndAssign(conversation.id, agent(n + 1));
+          await repository.save(assigned, stored.version);
+        }),
+      );
+
+      const succeeded = outcomes.filter((o) => o.status === 'fulfilled').length;
+      expect(succeeded).toBeGreaterThanOrEqual(1);
+      expect(await rawDocument(conversation.id)).toMatchObject({ version: succeeded });
+    });
+  });
+
   describe('indexes', () => {
     it('exist in the database', async () => {
       const keys = (await model.collection.indexes()).map((index) => index.key);
@@ -446,6 +585,7 @@ describe('MongooseConversationRepository (real MongoDB)', () => {
       status: 'open',
       createdAt: now,
       updatedAt: now,
+      version: 0,
     });
     const assigned = () => ({ assignedAgentId: agentId, assignedAt: now, assignedBy: 'user_123' });
     /** MongoDB's "document failed validation" error code. */

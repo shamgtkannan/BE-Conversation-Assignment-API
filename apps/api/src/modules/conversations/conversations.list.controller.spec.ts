@@ -29,6 +29,7 @@ const conversation = (n: number, assigned = false): IConversationEntity => ({
   }),
   createdAt: new Date(Date.UTC(2026, 10, 13, 8, n)),
   updatedAt: new Date(Date.UTC(2026, 10, 13, 8, n)),
+  version: 0,
 });
 
 const page: Page<IConversationEntity> = {

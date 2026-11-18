@@ -24,6 +24,7 @@ const toDocument = (conversation: Conversation): StoredConversation => {
     status: conversation.status,
     createdAt: conversation.createdAt,
     updatedAt: conversation.updatedAt,
+    version: conversation.version,
   };
 
   if (conversation.assignedAgentId !== undefined) {
@@ -52,6 +53,8 @@ const toEntity = (doc: StoredConversation): IConversationEntity => {
     status: doc.status,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    // Documents stored before the version existed count as version 0.
+    version: doc.version ?? 0,
   };
 
   if (doc.assignedAgentId != null) {
@@ -129,7 +132,8 @@ export class MongooseConversationRepository implements ConversationRepository {
    * the duplicate `_id` makes the database refuse: one workspace can never
    * overwrite another's conversation.
    */
-  async save(conversation: Conversation): Promise<void> {
+  // STUB: expectedVersion is not checked yet.
+  async save(conversation: Conversation, _expectedVersion?: number): Promise<void> {
     await this.model.replaceOne(
       { _id: new mongoose.Types.ObjectId(conversation.id), workspaceId: conversation.workspaceId },
       toDocument(conversation),

@@ -4,6 +4,7 @@ import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
   ConversationClosedError,
+  ConversationConcurrentModificationError,
   ConversationNotFoundError,
   InvalidConversationError,
 } from 'conversations-domain';
@@ -33,6 +34,7 @@ describe('DomainExceptionFilter', () => {
     ['a role that may not assign', new AssignmentNotPermittedError('agent'), 403, 'Forbidden'],
     ['an agent to assign that does not exist', new AssignedAgentNotFoundError('65f1a2b3c4d5e6f708091a2b'), 404, 'Not Found'],
     ['a closed conversation', new ConversationClosedError('65f1a2b3c4d5e6f708091a2b'), 409, 'Conflict'],
+    ['a conversation changed by another request', new ConversationConcurrentModificationError('65f1a2b3c4d5e6f708091a2b'), 409, 'Conflict'],
     ['a duplicate agent email', new AgentEmailAlreadyExistsError('ada@example.com'), 409, 'Conflict'],
   ])('answers %s with %i', (_label, exception, statusCode, error) => {
     const { host, status, json } = fakeHost();
@@ -67,9 +69,10 @@ describe('DomainExceptionFilter', () => {
         AssignmentNotPermittedError,
         AssignedAgentNotFoundError,
         ConversationClosedError,
+        ConversationConcurrentModificationError,
       ]),
     );
-    expect(caught).toHaveLength(9);
+    expect(caught).toHaveLength(10);
     expect(caught).not.toContain(Error);
   });
 });

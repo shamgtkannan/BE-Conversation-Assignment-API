@@ -3,6 +3,7 @@ import {
   AssignmentNotPermittedError,
   Conversation,
   ConversationClosedError,
+  ConversationConcurrentModificationError,
   ConversationNotFoundError,
   InvalidConversationError,
 } from 'conversations-domain';
@@ -10,6 +11,7 @@ import {
   AssignConversationCommand,
   AssignConversationUseCase,
 } from './assign-conversation.use-case';
+import { BarrierConversationRepository } from './testing/barrier-conversation.repository';
 import { InMemoryAgentLookup } from './testing/in-memory-agent-lookup';
 import { InMemoryConversationRepository } from './testing/in-memory-conversation.repository';
 
@@ -212,6 +214,64 @@ describe('AssignConversationUseCase', () => {
       await expect(useCase.execute(command({ agentId: id(999) }))).rejects.toThrow(
         AssignedAgentNotFoundError,
       );
+    });
+  });
+
+  describe('simultaneous requests', () => {
+    const raceRepository = async () => {
+      const racing = new BarrierConversationRepository(2);
+      await racing.save(
+        Conversation.create({
+          id: conversationId,
+          workspaceId: 'workspace_1',
+          subject: 'Help',
+          now: created,
+        }),
+      );
+      return racing;
+    };
+
+    it('saves with the version it read, so a change made meanwhile is detected', async () => {
+      await seed();
+      const save = jest.spyOn(repository, 'save');
+
+      await useCase.execute(command({ agentId: agentA }));
+      await useCase.execute(command({ agentId: agentB }));
+
+      expect(save).toHaveBeenNthCalledWith(1, expect.objectContaining({ version: 1 }), 0);
+      expect(save).toHaveBeenNthCalledWith(2, expect.objectContaining({ version: 2 }), 1);
+    });
+
+    it('lets one of two assignments that read the same conversation win and rejects the other', async () => {
+      const racing = await raceRepository();
+      const race = new AssignConversationUseCase(racing, agents, { now: () => current });
+
+      const outcomes = await Promise.allSettled([
+        race.execute(command({ agentId: agentA })),
+        race.execute(command({ agentId: agentB })),
+      ]);
+
+      const winners = outcomes.filter((o) => o.status === 'fulfilled');
+      const losers = outcomes.filter((o) => o.status === 'rejected');
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      expect((losers[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+        ConversationConcurrentModificationError,
+      );
+      const winner = (winners[0] as PromiseFulfilledResult<unknown>).value;
+      expect(await racing.findById('workspace_1', conversationId)).toEqual(winner);
+    });
+
+    it('keeps the winner at version 1: the rejected request writes nothing', async () => {
+      const racing = await raceRepository();
+      const race = new AssignConversationUseCase(racing, agents, { now: () => current });
+
+      await Promise.allSettled([
+        race.execute(command({ agentId: agentA })),
+        race.execute(command({ agentId: agentB })),
+      ]);
+
+      expect((await racing.findById('workspace_1', conversationId))?.version).toBe(1);
     });
   });
 });

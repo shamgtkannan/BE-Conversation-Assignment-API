@@ -19,7 +19,7 @@ import * as mongoose from 'mongoose';
 export const conversationValidator: { $jsonSchema: Record<string, unknown> } = {
   $jsonSchema: {
     bsonType: 'object',
-    required: ['workspaceId', 'subject', 'status', 'createdAt', 'updatedAt'],
+    required: ['workspaceId', 'subject', 'status', 'createdAt', 'updatedAt', 'version'],
     additionalProperties: false,
     properties: {
       _id: { bsonType: 'objectId' },
@@ -32,6 +32,7 @@ export const conversationValidator: { $jsonSchema: Record<string, unknown> } = {
       assignedBy: { bsonType: 'string', minLength: 1 },
       createdAt: { bsonType: 'date' },
       updatedAt: { bsonType: 'date' },
+      version: { bsonType: 'int', minimum: 0 },
     },
     // If any assignment field is present, the other two must be too.
     dependencies: {

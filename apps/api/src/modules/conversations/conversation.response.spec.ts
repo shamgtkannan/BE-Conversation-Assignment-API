@@ -8,6 +8,7 @@ const unassigned: IConversationEntity = {
   workspaceId: 'workspace_1',
   createdAt: new Date('2026-11-13T08:30:00.000Z'),
   updatedAt: new Date('2026-11-13T08:30:00.000Z'),
+  version: 0,
 };
 
 const assigned: IConversationEntity = {
@@ -16,6 +17,7 @@ const assigned: IConversationEntity = {
   assignedAt: new Date('2026-11-13T09:00:00.000Z'),
   assignedBy: 'user_123',
   updatedAt: new Date('2026-11-13T09:00:00.000Z'),
+  version: 0,
 };
 
 describe('toConversationResponse', () => {

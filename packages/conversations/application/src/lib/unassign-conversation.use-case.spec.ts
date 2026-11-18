@@ -1,6 +1,7 @@
 import {
   AssignmentNotPermittedError,
   Conversation,
+  ConversationConcurrentModificationError,
   ConversationNotFoundError,
   InvalidConversationError,
 } from 'conversations-domain';
@@ -8,6 +9,7 @@ import {
   UnassignConversationCommand,
   UnassignConversationUseCase,
 } from './unassign-conversation.use-case';
+import { BarrierConversationRepository } from './testing/barrier-conversation.repository';
 import { InMemoryConversationRepository } from './testing/in-memory-conversation.repository';
 
 const id = (n: number) => n.toString(16).padStart(24, '0');
@@ -178,6 +180,40 @@ describe('UnassignConversationUseCase', () => {
       await expect(useCase.execute(command())).rejects.toThrow(ConversationNotFoundError);
       expect(save).not.toHaveBeenCalled();
       expect((await repository.findById('workspace_2', conversationId))?.assignedAgentId).toBe(agentId);
+    });
+  });
+
+  describe('simultaneous requests', () => {
+    it('saves with the version it read, so a change made meanwhile is detected', async () => {
+      await seed();
+      const save = jest.spyOn(repository, 'save');
+
+      await useCase.execute(command());
+
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ version: 2 }), 1);
+    });
+
+    it('lets one of two removals that read the same conversation win and rejects the other', async () => {
+      const racing = new BarrierConversationRepository(2);
+      await racing.save(
+        Conversation.create({
+          id: conversationId,
+          workspaceId: 'workspace_1',
+          subject: 'Help',
+          now: created,
+        }).assign(agentId, 'user_1', assignTime),
+      );
+      const race = new UnassignConversationUseCase(racing, { now: () => unassignTime });
+
+      const outcomes = await Promise.allSettled([race.execute(command()), race.execute(command())]);
+
+      const losers = outcomes.filter((o) => o.status === 'rejected');
+      expect(outcomes.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      expect((losers[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+        ConversationConcurrentModificationError,
+      );
+      expect((await racing.findById('workspace_1', conversationId))?.version).toBe(2);
     });
   });
 });

@@ -12,10 +12,10 @@ import * as mongoose from 'mongoose';
  * Persistence shape of {@link IConversationEntity}; the repository maps between
  * the two so the domain never sees Mongoose types.
  *
- * Soft-delete, domain-event and lock fields are omitted on purpose: there is no
- * delete endpoint, and concurrent-write protection is out of scope for now. For
- * the same reason Mongoose's `__v` version key is switched off, so a stored
- * document holds exactly the listed fields.
+ * Soft-delete and domain-event fields are omitted on purpose: there is no delete
+ * endpoint. Concurrent writes are guarded by our own `version` field, so
+ * Mongoose's `__v` key is switched off and a stored document holds exactly the
+ * listed fields.
  */
 @Schema({ collection: 'conversations', versionKey: false })
 export class ConversationDo implements IConversationEntity {
@@ -59,6 +59,10 @@ export class ConversationDo implements IConversationEntity {
 
   @Prop({ required: true, type: Date })
   updatedAt!: Date;
+
+  /** Counts changes; a save only goes through if this is still the value that was read. */
+  @Prop({ required: true, type: Number, default: 0 })
+  version!: number;
 }
 
 /** Compiled Mongoose schema for {@link ConversationDo}. */

@@ -34,6 +34,8 @@ export class Conversation implements IConversationEntity {
     readonly assignedAgentId?: string,
     readonly assignedAt?: Date,
     readonly assignedBy?: string,
+    // STUB: not counted yet. Each change must add 1 (see the version tests).
+    readonly version = 0,
   ) {}
 
   /**

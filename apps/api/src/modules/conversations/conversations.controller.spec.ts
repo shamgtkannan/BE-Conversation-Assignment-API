@@ -23,6 +23,7 @@ const created: IConversationEntity = {
   workspaceId: 'workspace_1',
   createdAt: new Date('2026-11-13T08:30:00.000Z'),
   updatedAt: new Date('2026-11-13T08:30:00.000Z'),
+  version: 0,
 };
 
 const authHeaders = (role = 'agent') => ({

@@ -16,8 +16,16 @@ export interface ConversationRepository {
    * Persists a conversation by its id: inserts it when new, otherwise replaces
    * the stored one. Replacing is what lets later changes (an assignment, say)
    * reuse this method.
+   *
+   * Pass `expectedVersion` (the version the conversation was read at) when
+   * changing an existing conversation: the change is then written only if the
+   * stored version still equals it, and the stored version becomes the new
+   * conversation's. Omit it for a brand-new conversation.
+   *
+   * @throws ConversationConcurrentModificationError when `expectedVersion` is no
+   * longer the stored version (someone else saved first). Nothing is written.
    */
-  save(conversation: Conversation): Promise<void>;
+  save(conversation: Conversation, expectedVersion?: number): Promise<void>;
 
   /**
    * Finds one conversation by id inside a workspace. Resolves to `null` when

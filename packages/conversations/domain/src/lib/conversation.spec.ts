@@ -269,3 +269,60 @@ describe('Conversation.unassign', () => {
     expect(again).toMatchObject({ assignedAgentId: agentA, assignedBy: 'user_2', assignedAt: later });
   });
 });
+
+describe('Conversation version', () => {
+  const agentA = '65f1a2b3c4d5e6f708091a2c';
+  const agentB = '65f1a2b3c4d5e6f708091a2d';
+  const later = new Date('2026-11-13T09:00:00.000Z');
+
+  it('starts at 0', () => {
+    expect(Conversation.create(props()).version).toBe(0);
+  });
+
+  it('goes up by one when an agent is assigned', () => {
+    const assigned = Conversation.create(props()).assign(agentA, 'user_1', later);
+
+    expect(assigned.version).toBe(1);
+  });
+
+  it('goes up by one on every reassignment', () => {
+    const reassigned = Conversation.create(props())
+      .assign(agentA, 'user_1', later)
+      .assign(agentB, 'user_1', later);
+
+    expect(reassigned.version).toBe(2);
+  });
+
+  it('stays the same when the same agent is assigned again, because nothing changed', () => {
+    const assigned = Conversation.create(props()).assign(agentA, 'user_1', later);
+
+    expect(assigned.assign(agentA, 'user_1', later).version).toBe(1);
+  });
+
+  it('goes up by one when the agent is removed', () => {
+    const unassigned = Conversation.create(props()).assign(agentA, 'user_1', later).unassign(later);
+
+    expect(unassigned.version).toBe(2);
+  });
+
+  it('stays the same when nobody was assigned, because nothing changed', () => {
+    expect(Conversation.create(props()).unassign(later).version).toBe(0);
+  });
+
+  it('leaves the original conversation at its own version', () => {
+    const original = Conversation.create(props());
+
+    original.assign(agentA, 'user_1', later);
+
+    expect(original.version).toBe(0);
+  });
+
+  it('is kept when a stored conversation is restored, and counts on from there', () => {
+    const stored = { ...Conversation.create(props()).assign(agentA, 'user_1', later) };
+
+    const restored = Conversation.restore(stored);
+
+    expect(restored.version).toBe(1);
+    expect(restored.assign(agentB, 'user_1', later).version).toBe(2);
+  });
+});

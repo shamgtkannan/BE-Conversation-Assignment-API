@@ -31,4 +31,10 @@ export interface IConversationEntity {
   createdAt: Date;
   /** Last modification time, UTC. Equals `createdAt` until the first change. */
   updatedAt: Date;
+  /**
+   * Counts the changes made to the stored conversation, starting at 0. Storage
+   * writes a change only if the version it was read at is still current
+   * (optimistic concurrency); it is not part of the API response.
+   */
+  version: number;
 }

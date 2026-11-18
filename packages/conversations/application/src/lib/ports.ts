@@ -3,7 +3,9 @@ import {
   Conversation,
   ConversationEvent,
   ConversationStatus,
+  IAssignmentHistoryEntity,
   IConversationEntity,
+  NewAssignmentHistoryEntry,
 } from 'conversations-domain';
 
 /** Optional filters of the conversation list; both combine with AND. */
@@ -90,3 +92,32 @@ export interface EventPublisher {
 }
 /** Injection token for {@link EventPublisher}. */
 export const EVENT_PUBLISHER = Symbol('EVENT_PUBLISHER');
+
+/**
+ * Storage for assignment history lines. Implemented in `conversations-infra`;
+ * the application layer only knows this interface (dependency inversion).
+ */
+export interface AssignmentHistoryRepository {
+  /**
+   * Stores a history line. Each event is recorded once: when a line for the same
+   * `eventId` already exists, nothing is stored.
+   *
+   * @returns `true` when the line was stored, `false` when it was already there.
+   */
+  record(entry: NewAssignmentHistoryEntry): Promise<boolean>;
+
+  /**
+   * Reads up to `request.fetchSize` history lines of one conversation of one
+   * workspace. Ordering contract (the same as the other lists): newest first by
+   * `createdAt`, ties broken by id descending. With a cursor, only rows strictly
+   * after it in that order are returned (`next`) or strictly before it
+   * (`previous`, returned nearest-first so the caller can reverse them).
+   */
+  list(
+    workspaceId: string,
+    conversationId: string,
+    request: PageRequest,
+  ): Promise<IAssignmentHistoryEntity[]>;
+}
+/** Injection token for {@link AssignmentHistoryRepository}. */
+export const ASSIGNMENT_HISTORY_REPOSITORY = Symbol('ASSIGNMENT_HISTORY_REPOSITORY');

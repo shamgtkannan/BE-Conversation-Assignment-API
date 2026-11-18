@@ -4,3 +4,5 @@ export * from './lib/get-conversation.use-case';
 export * from './lib/list-conversations.use-case';
 export * from './lib/ports';
 export * from './lib/unassign-conversation.use-case';
+export * from './lib/list-assignment-history.use-case';
+export * from './lib/record-assignment-history.use-case';

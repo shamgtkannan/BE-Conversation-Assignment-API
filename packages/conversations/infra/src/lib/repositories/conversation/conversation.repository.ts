@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { PageRequest } from '@shared/core';
 import { ConversationFilter, ConversationRepository } from 'conversations-application';
-import { Conversation, IConversationEntity } from 'conversations-domain';
+import {
+  Conversation,
+  ConversationConcurrentModificationError,
+  IConversationEntity,
+} from 'conversations-domain';
 import * as mongoose from 'mongoose';
 import { ConversationDo } from './schema';
 
@@ -125,19 +129,40 @@ export class MongooseConversationRepository implements ConversationRepository {
   }
 
   /**
-   * Inserts the conversation, or replaces the stored one with the same id.
+   * Without `expectedVersion`: inserts the conversation, or replaces the stored
+   * one with the same id.
+   *
+   * With it: replaces the stored conversation only if its version is still
+   * `expectedVersion`, in one atomic database operation, so of several requests
+   * that read the same version exactly one is written. Documents stored before
+   * the version existed have none, which counts as 0.
    *
    * The match is on id and workspace together. A conversation whose id exists in
-   * another workspace therefore does not match, the upsert tries to insert, and
-   * the duplicate `_id` makes the database refuse: one workspace can never
-   * overwrite another's conversation.
+   * another workspace therefore does not match: the unversioned upsert tries to
+   * insert and the duplicate `_id` makes the database refuse, so one workspace can
+   * never overwrite another's conversation.
+   *
+   * @throws ConversationConcurrentModificationError when the versioned write matched nothing.
    */
-  // STUB: expectedVersion is not checked yet.
-  async save(conversation: Conversation, _expectedVersion?: number): Promise<void> {
-    await this.model.replaceOne(
-      { _id: new mongoose.Types.ObjectId(conversation.id), workspaceId: conversation.workspaceId },
-      toDocument(conversation),
-      { upsert: true, runValidators: true },
-    );
+  async save(conversation: Conversation, expectedVersion?: number): Promise<void> {
+    const filter: mongoose.QueryFilter<ConversationDo> = {
+      _id: new mongoose.Types.ObjectId(conversation.id),
+      workspaceId: conversation.workspaceId,
+    };
+    if (expectedVersion === undefined) {
+      await this.model.replaceOne(filter, toDocument(conversation), {
+        upsert: true,
+        runValidators: true,
+      });
+      return;
+    }
+
+    filter.version = expectedVersion === 0 ? { $in: [0, null] } : expectedVersion;
+    const result = await this.model.replaceOne(filter, toDocument(conversation), {
+      runValidators: true,
+    });
+    if (result.matchedCount === 0) {
+      throw new ConversationConcurrentModificationError(conversation.id);
+    }
   }
 }

@@ -1,5 +1,9 @@
 import { PageRequest } from '@shared/core';
-import { Conversation, IConversationEntity } from 'conversations-domain';
+import {
+  Conversation,
+  ConversationConcurrentModificationError,
+  IConversationEntity,
+} from 'conversations-domain';
 import { ConversationFilter, ConversationRepository } from '../ports';
 
 /** List order: newest first, the id breaks ties. */
@@ -14,8 +18,12 @@ const newestFirst = (a: IConversationEntity, b: IConversationEntity): number =>
 export class InMemoryConversationRepository implements ConversationRepository {
   readonly saved: Conversation[] = [];
 
-  async save(conversation: Conversation): Promise<void> {
+  async save(conversation: Conversation, expectedVersion?: number): Promise<void> {
     const at = this.saved.findIndex((c) => c.id === conversation.id);
+    // Like the real one: a versioned save only goes through if nobody saved since the read.
+    if (expectedVersion !== undefined && this.saved[at]?.version !== expectedVersion) {
+      throw new ConversationConcurrentModificationError(conversation.id);
+    }
     if (at >= 0) {
       this.saved[at] = conversation;
     } else {

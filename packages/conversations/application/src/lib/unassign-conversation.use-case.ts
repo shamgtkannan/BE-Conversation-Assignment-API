@@ -30,6 +30,8 @@ export interface UnassignConversationCommand {
  * @throws AssignmentNotPermittedError when the role is not admin or manager.
  * @throws InvalidConversationError when the id is malformed.
  * @throws ConversationNotFoundError when the conversation is not in the workspace.
+ * @throws ConversationConcurrentModificationError when someone else changed the
+ * conversation after it was read here (nothing is written; the caller may retry).
  */
 export class UnassignConversationUseCase {
   constructor(
@@ -62,7 +64,7 @@ export class UnassignConversationUseCase {
     const unassigned = conversation.unassign(this.clock.now());
     // The domain hands back the same instance when nothing changed: skip the write.
     if (unassigned !== conversation) {
-      await this.conversations.save(unassigned);
+      await this.conversations.save(unassigned, stored.version);
     }
     return unassigned;
   }

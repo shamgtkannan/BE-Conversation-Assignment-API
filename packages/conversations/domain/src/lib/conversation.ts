@@ -34,7 +34,7 @@ export class Conversation implements IConversationEntity {
     readonly assignedAgentId?: string,
     readonly assignedAt?: Date,
     readonly assignedBy?: string,
-    // STUB: not counted yet. Each change must add 1 (see the version tests).
+    /** Changes made so far; storage writes a change only if this is still current. */
     readonly version = 0,
   ) {}
 
@@ -87,6 +87,7 @@ export class Conversation implements IConversationEntity {
       entity.assignedAgentId,
       entity.assignedAt && new Date(entity.assignedAt),
       entity.assignedBy,
+      entity.version,
     );
   }
 
@@ -96,6 +97,7 @@ export class Conversation implements IConversationEntity {
    *
    * - The three assignment fields are cleared together (absent, not `null`) and
    *   `updatedAt` becomes `now`.
+   * - The version goes up by one.
    * - A conversation nobody is assigned to comes back as the same instance,
    *   untouched, so callers can skip the write.
    * - Unlike assigning, this is allowed on a closed conversation: the rule that
@@ -112,6 +114,10 @@ export class Conversation implements IConversationEntity {
       this.workspaceId,
       this.createdAt,
       new Date(now),
+      undefined,
+      undefined,
+      undefined,
+      this.version + 1,
     );
   }
 
@@ -123,7 +129,7 @@ export class Conversation implements IConversationEntity {
    * - Assigning the current agent again changes nothing: the same instance
    *   comes back, with `assignedAt`, `assignedBy` and `updatedAt` untouched.
    * - Any other agent replaces the current one (the three assignment fields
-   *   are set together, `updatedAt` becomes `now`).
+   *   are set together, `updatedAt` becomes `now`, the version goes up by one).
    *
    * The caller checks that `agentId` is a real agent of this workspace and
    * that `assignedBy` may assign; the conversation does not know agents.
@@ -147,6 +153,7 @@ export class Conversation implements IConversationEntity {
       agentId,
       new Date(now),
       assignedBy,
+      this.version + 1,
     );
   }
 }

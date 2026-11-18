@@ -36,6 +36,8 @@ export interface AssignConversationCommand {
  * @throws ConversationNotFoundError when the conversation is not in the workspace.
  * @throws AssignedAgentNotFoundError when the agent is not in the workspace.
  * @throws ConversationClosedError when the conversation is closed.
+ * @throws ConversationConcurrentModificationError when someone else changed the
+ * conversation after it was read here (nothing is written; the caller may retry).
  */
 export class AssignConversationUseCase {
   constructor(
@@ -80,7 +82,7 @@ export class AssignConversationUseCase {
     const assigned = conversation.assign(agentId, userId, this.clock.now());
     // The domain hands back the same instance when nothing changed: skip the write.
     if (assigned !== conversation) {
-      await this.conversations.save(assigned);
+      await this.conversations.save(assigned, stored.version);
     }
     return assigned;
   }

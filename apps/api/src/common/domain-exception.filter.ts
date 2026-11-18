@@ -5,6 +5,7 @@ import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
   ConversationClosedError,
+  ConversationConcurrentModificationError,
   ConversationNotFoundError,
   InvalidConversationError,
 } from 'conversations-domain';
@@ -22,7 +23,8 @@ type DomainError =
   | AgentEmailAlreadyExistsError
   | AssignmentNotPermittedError
   | AssignedAgentNotFoundError
-  | ConversationClosedError;
+  | ConversationClosedError
+  | ConversationConcurrentModificationError;
 
 /** Maps each domain error to its HTTP status and the matching reason phrase. */
 const statusOf = (exception: DomainError): [number, string] => {
@@ -35,7 +37,8 @@ const statusOf = (exception: DomainError): [number, string] => {
   }
   if (
     exception instanceof AgentEmailAlreadyExistsError ||
-    exception instanceof ConversationClosedError
+    exception instanceof ConversationClosedError ||
+    exception instanceof ConversationConcurrentModificationError
   ) {
     return [HttpStatus.CONFLICT, 'Conflict'];
   }
@@ -52,7 +55,8 @@ const statusOf = (exception: DomainError): [number, string] => {
  * - {@link AssignmentNotPermittedError} becomes 403.
  * - {@link AgentNotFoundError}, {@link ConversationNotFoundError} and
  *   {@link AssignedAgentNotFoundError} become 404.
- * - {@link AgentEmailAlreadyExistsError} and {@link ConversationClosedError} become 409.
+ * - {@link AgentEmailAlreadyExistsError}, {@link ConversationClosedError} and
+ *   {@link ConversationConcurrentModificationError} become 409.
  *
  * Anything else is not caught here and falls through to Nest's default 500.
  */
@@ -66,6 +70,7 @@ const statusOf = (exception: DomainError): [number, string] => {
   AssignmentNotPermittedError,
   AssignedAgentNotFoundError,
   ConversationClosedError,
+  ConversationConcurrentModificationError,
 )
 export class DomainExceptionFilter implements ExceptionFilter {
   catch(exception: DomainError, host: ArgumentsHost): void {

@@ -143,7 +143,7 @@ Ids are MongoDB ObjectIds exposed as 24-character lowercase hex strings, for exa
 | `401` | Missing or invalid auth headers |
 | `403` | The `agent` role tries to assign or unassign |
 | `404` | Conversation or agent not found in the caller's workspace |
-| `409` | Assigning a closed conversation, or a duplicate agent email in the workspace |
+| `409` | Assigning a closed conversation, a duplicate agent email in the workspace, or a conversation that someone else changed while the request was running (send it again) |
 
 Error bodies from the domain and the auth guard look like this:
 
@@ -237,6 +237,7 @@ Rules, as implemented:
 - Assigning the agent who is already assigned changes nothing and writes nothing: `assignedAt`, `assignedBy` and `updatedAt` stay as they were.
 - Unassigning clears `assignedAgentId`, `assignedAt` and `assignedBy`. They become `null` in the response and are absent in the database. Unassigning an unassigned conversation is a harmless `200`. A closed conversation can be unassigned.
 - The checks run in this order, so a caller without the right never learns what exists: role (`403`), id formats (`400`), conversation (`404`), agent (`404`), closed (`409`). Body validation (`400`) runs before all of them.
+- Simultaneous changes to one conversation are safe (optimistic concurrency): each request is written only if nobody changed the conversation since it was read. Of several requests that read the same state, exactly one wins; the others get `409` and can simply be sent again. See the decision below.
 
 To look at the stored documents:
 
@@ -288,19 +289,19 @@ packages/
     application/               use cases, AgentRepository port, in-memory test double
     infra/                     Mongoose schema, repository, id generator
   conversations/
-    domain/                    Conversation (create, assign, unassign, restore), domain errors
-    application/               use cases, ConversationRepository and AgentLookup ports, test doubles
+    domain/                    Conversation (create, assign, unassign, restore, version), conversation events, domain errors
+    application/               use cases, ConversationRepository, AgentLookup and EventPublisher ports, test doubles
     infra/                     Mongoose schema, indexes, repository, id generator
 apps/
   api/src/
     auth/                      mock AuthGuard, @CurrentAuth()
-    common/                    DomainExceptionFilter, MongoModule, SystemClock
+    common/                    DomainExceptionFilter, MongoModule, SystemClock, NoopEventPublisher
     modules/agents/            controller, DTOs, response mapping, Nest module
     modules/conversations/     controller, DTOs, response mapping, Nest module, agent-lookup adapter
 ```
 
 - **Domain** holds the entities and business rules and imports no framework or database. `Conversation` is immutable: `assign` and `unassign` return a new conversation, or the same instance when nothing changes.
-- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AgentLookup`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP.
+- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AgentLookup`, `EventPublisher`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP.
 - **Infra** implements the ports with Mongoose: schemas, mappers between documents and entities, and indexes.
 - **apps/api** is the presentation layer and composition root. Controllers only validate input, take the caller from `@CurrentAuth()` and delegate. Modules build the use cases with `useFactory` and bind ports to adapters through Symbol tokens. The `DomainExceptionFilter` turns domain errors into HTTP statuses in one place, so controllers never catch.
 - **Contexts stay separate.** Conversations must know whether an agent exists, so it owns an `AgentLookup` port. `AgentsBackedAgentLookup` in `apps/api` implements it by calling the agents `GetAgentUseCase`. The two contexts never import each other.
@@ -330,10 +331,11 @@ MongoDB indexes, declared on the schemas:
 - **Another workspace's resource is a `404`**, the same as a missing one.
 - **Where the assignment and a convention disagree**, the assignment wins, for example `403` for a forbidden role and `409` for a duplicate email.
 - **Unassigning a closed conversation is allowed.** The assignment freezes only assigning and reassigning.
+- **Concurrency (bonus 3) uses a version number.** Every conversation stores a `version` that goes up by one with each assignment change. Saving a change is one atomic MongoDB update that matches the id, the workspace and the version that was read, so of several simultaneous requests exactly one is written and the rest fail with `409` (nothing is written for them). A time stamp would not do, because two changes can share a millisecond. The version is internal and not part of the API response; documents stored before it existed count as version 0. Requests that were not in step with each other can all succeed one after another, which is correct: the version equals the number of successful changes.
+- **Events are built by the use cases.** After a real assignment change the use case publishes `conversation.assigned.v1` (or `conversation.unassigned.v1`) through the `EventPublisher` port, once, after the save. For now the port is bound to a no-op adapter, so nothing leaves the process yet.
 
 ## Not implemented
 
 - **Bonus 1, assignment history.** No audit trail is kept.
-- **Bonus 2, Kafka event.** `conversation.assigned.v1` is not published. To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
-- **Bonus 3, concurrency.** Two simultaneous assignments of one conversation are not guarded, so the last write wins. A conditional update on `updatedAt` (or a version field) would detect the clash.
+- **Bonus 2, Kafka event.** The event is built and handed to the `EventPublisher` port, but no Kafka adapter exists yet, so `conversation.assigned.v1` is not published to Kafka. To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
 - **Real authentication.** Only the mock header guard exists.

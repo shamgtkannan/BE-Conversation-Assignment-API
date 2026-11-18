@@ -17,8 +17,9 @@ import {
   UnassignConversationUseCase,
 } from 'conversations-application';
 import { GetAgentUseCase } from 'agents-application';
-import { ConversationRepositoryModule } from 'conversations-infra';
-import { NoopEventPublisher } from '../../common/noop-event-publisher';
+import { ConversationRepositoryModule, KafkaEventPublisher } from 'conversations-infra';
+import { KafkaModule } from '../../common/kafka.module';
+import { KafkaProducerService } from '../../common/kafka-producer.service';
 import { SystemClock } from '../../common/system-clock';
 import { AgentsModule } from '../agents/agents.module';
 import { AgentsBackedAgentLookup } from './agents-backed-agent-lookup';
@@ -26,15 +27,19 @@ import { ConversationsController } from './conversations.controller';
 
 /**
  * Wires the conversations feature: ports are bound to MongoDB adapters by
- * `ConversationRepositoryModule`, and the use cases, plain classes without Nest
+ * `ConversationRepositoryModule` and events go to Kafka through `KafkaEventPublisher`, and the use cases, plain classes without Nest
  * decorators, are assembled here with `useFactory`.
  */
 @Module({
-  imports: [ConversationRepositoryModule, AgentsModule],
+  imports: [ConversationRepositoryModule, AgentsModule, KafkaModule],
   controllers: [ConversationsController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
-    { provide: EVENT_PUBLISHER, useClass: NoopEventPublisher },
+    {
+      provide: EVENT_PUBLISHER,
+      useFactory: (producer: KafkaProducerService) => new KafkaEventPublisher(producer),
+      inject: [KafkaProducerService],
+    },
     {
       provide: CreateConversationUseCase,
       useFactory: (conversations: ConversationRepository, ids: IdGenerator, clock: Clock) =>

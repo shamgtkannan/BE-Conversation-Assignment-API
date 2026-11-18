@@ -19,7 +19,7 @@ All endpoints from the assignment are implemented:
 
 1. [Prerequisites](#prerequisites)
 2. [Install](#1-install)
-3. [Start MongoDB](#2-start-mongodb)
+3. [Start MongoDB and Kafka](#2-start-mongodb-and-kafka)
 4. [Run the API](#3-run-the-api)
 5. [Environment variables](#environment-variables)
 6. [API reference](#api-reference)
@@ -33,7 +33,7 @@ All endpoints from the assignment are implemented:
 - Node 20 (`nvm use` reads `.nvmrc`)
 - Docker Desktop, or any Docker with Compose v2, running
 
-MongoDB runs from the `docker-compose.yml` in this repository: MongoDB 8.0 as a single-node replica set (the API needs a replica set name). No other repository and no `/etc/hosts` change is needed.
+MongoDB and Kafka run from the `docker-compose.yml` in this repository: MongoDB 8.0 as a single-node replica set (the API needs a replica set name) and Kafka 3.9 as a single KRaft node. No other repository and no `/etc/hosts` change is needed.
 
 ## 1. Install
 
@@ -45,13 +45,13 @@ cp .env.example .env
 
 `.env` is git-ignored. Its defaults match the compose file below. Change them only if you change the compose file or use another MongoDB.
 
-## 2. Start MongoDB
+## 2. Start MongoDB and Kafka
 
 ```sh
 docker compose up -d --wait
 ```
 
-`--wait` returns when the container is healthy, which takes about 10 seconds the first time. The container (`assignment-mongo`) initialises the replica set `mongodb-test` by itself and listens on `localhost:27017`. The port is bound to the loopback interface only, because there is no authentication.
+`--wait` returns when both containers are healthy, which takes about 10 seconds the first time (the Kafka image is downloaded once). The MongoDB container (`assignment-mongo`) initialises the replica set `mongodb-test` by itself and listens on `localhost:27017`. The Kafka container (`assignment-kafka`) is a single KRaft node, with no ZooKeeper, and listens on `localhost:9092`. Both ports are bound to the loopback interface only, because there is no authentication. Kafka keeps no volume, so a recreated container starts empty.
 
 Check that it worked. The only member should be `PRIMARY`:
 
@@ -76,7 +76,7 @@ To use a different MongoDB, for example a three-node replica set, change `MONGOD
 npx nx serve api
 ```
 
-The API listens on http://localhost:3000. It refuses to start without `MONGODB_HOSTS`, `MONGODB_DATABASE` and `MONGODB_REPLICA_SET`, and fails after about 5 seconds if MongoDB is not reachable. Indexes are created from the Mongoose schemas when the API starts.
+The API listens on http://localhost:3000. It refuses to start without `MONGODB_HOSTS`, `MONGODB_DATABASE`, `MONGODB_REPLICA_SET` and `KAFKA_BROKERS`, and fails after about 5 seconds if MongoDB is not reachable. Kafka does not have to be up to start: the API connects on first use (see the decision on events below). Indexes are created from the Mongoose schemas when the API starts.
 
 A production build: `npx nx build api`, then `node dist/apps/api/main.js` with the same environment variables.
 
@@ -91,8 +91,11 @@ The API reads `.env` from the working directory. Variables already set in the en
 | `MONGODB_DATABASE` | Database name | none (required) |
 | `MONGODB_REPLICA_SET` | Replica set name | none (required) |
 | `MONGODB_POOL_SIZE` | Connection pool size | `10` |
+| `KAFKA_BROKERS` | Comma-separated `host:port` list of Kafka brokers | none (required) |
+| `KAFKA_CLIENT_ID` | Client id the API presents to Kafka | `conversation-assignment-api` |
 | `MONGODB_TEST_HOSTS` | Integration tests only: MongoDB hosts | `localhost:27017` |
 | `MONGODB_TEST_REPLICA_SET` | Integration tests only: replica set name | `mongodb-test` |
+| `KAFKA_TEST_BROKERS` | Integration tests only: Kafka brokers | `localhost:9092` |
 | `MONGODB_TEST_DATABASE` | Integration tests only: base database name, which must end in `_test`. Each suite adds its own suffix. | `assignment_test` |
 
 ## API reference
@@ -332,10 +335,10 @@ MongoDB indexes, declared on the schemas:
 - **Where the assignment and a convention disagree**, the assignment wins, for example `403` for a forbidden role and `409` for a duplicate email.
 - **Unassigning a closed conversation is allowed.** The assignment freezes only assigning and reassigning.
 - **Concurrency (bonus 3) uses a version number.** Every conversation stores a `version` that goes up by one with each assignment change. Saving a change is one atomic MongoDB update that matches the id, the workspace and the version that was read, so of several simultaneous requests exactly one is written and the rest fail with `409` (nothing is written for them). A time stamp would not do, because two changes can share a millisecond. The version is internal and not part of the API response; documents stored before it existed count as version 0. Requests that were not in step with each other can all succeed one after another, which is correct: the version equals the number of successful changes.
-- **Events are built by the use cases.** After a real assignment change the use case publishes `conversation.assigned.v1` (or `conversation.unassigned.v1`) through the `EventPublisher` port, once, after the save. For now the port is bound to a no-op adapter, so nothing leaves the process yet.
+- **Events are built by the use cases.** After a real assignment change the use case publishes `conversation.assigned.v1` (or `conversation.unassigned.v1`) through the `EventPublisher` port, once, after the save. `KafkaEventPublisher` implements the port: the topic is the event type, the message key is the conversation id (so one conversation's events stay in one partition, in order), and the value is the event as JSON. The producer is idempotent and waits for all in-sync replicas (`acks=-1`). Topics are created on first use (3 partitions). **Known gap:** the event is published right after the database save, so a crash between the two, or Kafka being down, loses the event, and a failed publish makes the request answer `500` although the assignment was saved. Closing that gap is the next part of the bonus work (see below).
 
 ## Not implemented
 
 - **Bonus 1, assignment history.** No audit trail is kept.
-- **Bonus 2, Kafka event.** The event is built and handed to the `EventPublisher` port, but no Kafka adapter exists yet, so `conversation.assigned.v1` is not published to Kafka. To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
+- **Bonus 2, Kafka event (partly).** `conversation.assigned.v1` is published to Kafka after a successful assignment, but not yet in a way that survives every failure (see the known gap above). To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
 - **Real authentication.** Only the mock header guard exists.

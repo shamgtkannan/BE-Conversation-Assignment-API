@@ -6,6 +6,7 @@ module.exports = {
   displayName: 'api:integration',
   testMatch: ['**/*.integration.spec.ts'],
   testPathIgnorePatterns: ['/node_modules/'],
+  setupFiles: [...(base.setupFiles ?? []), '<rootDir>/jest.integration.setup.js'],
   maxWorkers: 1,
   testTimeout: 30000,
 };

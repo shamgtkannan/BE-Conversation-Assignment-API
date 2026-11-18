@@ -11,6 +11,8 @@ import { createValidationPipe } from './app/validation-pipe';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.useGlobalPipes(createValidationPipe());
+  // Lets the Kafka producer disconnect cleanly on SIGTERM / SIGINT.
+  app.enableShutdownHooks();
   const port = process.env.PORT || 3000;
   await app.listen(port);
   // Set when Nx waits for this server to be ready

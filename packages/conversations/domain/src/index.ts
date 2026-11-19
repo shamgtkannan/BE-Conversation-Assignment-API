@@ -10,3 +10,4 @@ export * from './lib/exceptions/conversation-concurrent-modification.error';
 export * from './lib/events/conversation-events';
 export * from './lib/assignment-history/assignment-history';
 export * from './lib/assignment-history/assignment-history.entity';
+export * from './lib/events/assignment-requested';

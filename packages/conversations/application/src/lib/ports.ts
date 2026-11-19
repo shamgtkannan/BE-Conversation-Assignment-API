@@ -1,5 +1,6 @@
 import { PageRequest } from '@shared/core';
 import {
+  AssignmentRequested,
   Conversation,
   ConversationEvent,
   ConversationStatus,
@@ -121,3 +122,15 @@ export interface AssignmentHistoryRepository {
 }
 /** Injection token for {@link AssignmentHistoryRepository}. */
 export const ASSIGNMENT_HISTORY_REPOSITORY = Symbol('ASSIGNMENT_HISTORY_REPOSITORY');
+
+/**
+ * Sends a request to change a conversation's assignment to whoever carries it
+ * out. Implemented in the outer layers (a message broker); the use case that asks
+ * only knows this interface.
+ */
+export interface AssignmentRequestPublisher {
+  /** Hands the request over. Resolves once the implementation has accepted it. */
+  publish(request: AssignmentRequested): Promise<void>;
+}
+/** Injection token for {@link AssignmentRequestPublisher}. */
+export const ASSIGNMENT_REQUEST_PUBLISHER = Symbol('ASSIGNMENT_REQUEST_PUBLISHER');

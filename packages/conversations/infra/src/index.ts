@@ -8,3 +8,5 @@ export * from './lib/events/kafka-event-decoder';
 export * from './lib/repositories/assignment-history/assignment-history-repository.module';
 export * from './lib/repositories/assignment-history/assignment-history.repository';
 export * from './lib/repositories/assignment-history/schema';
+export * from './lib/events/assignment-request-decoder';
+export * from './lib/events/kafka-assignment-request-publisher';

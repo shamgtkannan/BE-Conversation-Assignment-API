@@ -10,3 +10,7 @@ export * from './lib/repositories/assignment-history/assignment-history.reposito
 export * from './lib/repositories/assignment-history/schema';
 export * from './lib/events/assignment-request-decoder';
 export * from './lib/events/kafka-assignment-request-publisher';
+export * from './lib/change-stream/change-stream-images';
+export * from './lib/change-stream/conversation-change-watcher';
+export * from './lib/change-stream/conversation-change.mapper';
+export * from './lib/change-stream/open-conversation-change-stream';

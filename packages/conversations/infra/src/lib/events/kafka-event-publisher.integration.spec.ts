@@ -5,12 +5,7 @@
  * the message key and reads only its own messages.
  */
 import { randomUUID } from 'crypto';
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationAssigned,
-  ConversationUnassigned,
-} from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1, ConversationAssigned } from 'conversations-domain';
 import { Kafka, Producer, logLevel } from 'kafkajs';
 import { CONVERSATION_EVENT_TOPICS, KafkaEventPublisher } from './kafka-event-publisher';
 import { EVENT_TOPIC_PARTITIONS, ensureTopics } from './kafka-topics';
@@ -94,25 +89,6 @@ describe('KafkaEventPublisher (real Kafka)', () => {
     const [message] = await read(CONVERSATION_ASSIGNED_V1, conversationId, 1);
     expect(message.value).toEqual({ ...event, occurredAt: '2026-11-13T09:00:00.000Z' });
     expect(message.headers).toEqual({ eventId: event.eventId, type: CONVERSATION_ASSIGNED_V1 });
-  });
-
-  it('delivers an unassigned event to the unassigned topic', async () => {
-    const conversationId = randomUUID();
-    const event: ConversationUnassigned = {
-      type: CONVERSATION_UNASSIGNED_V1,
-      eventId: randomUUID(),
-      occurredAt: new Date('2026-11-13T10:00:00.000Z'),
-      workspaceId: 'workspace_1',
-      conversationId,
-      previousAgentId: 'agent_1',
-      unassignedBy: 'user_2',
-      version: 2,
-    };
-
-    await publisher.publish(event);
-
-    const [message] = await read(CONVERSATION_UNASSIGNED_V1, conversationId, 1);
-    expect(message.value).toMatchObject({ unassignedBy: 'user_2', previousAgentId: 'agent_1', version: 2 });
   });
 
   it('keeps the events of one conversation in one partition, in the order they were published', async () => {

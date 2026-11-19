@@ -3,15 +3,15 @@ import { AssignmentAction, IAssignmentHistoryEntity } from 'conversations-domain
 
 /**
  * JSON shape of one history line in API responses. The time is an ISO 8601
- * string in UTC. `previousAgentId` and `newAgentId` are always present: `null`
- * when there was no agent before, or none after.
+ * string in UTC. `previousAgentId` is always present: `null` when there was no agent
+ * before. `newAgentId` is always the agent that was assigned.
  */
 export interface AssignmentHistoryEntryResponse {
   id: string;
   conversationId: string;
   action: AssignmentAction;
   previousAgentId: string | null;
-  newAgentId: string | null;
+  newAgentId: string;
   performedBy: string;
   occurredAt: string;
   version: number;
@@ -38,7 +38,7 @@ export const toAssignmentHistoryEntryResponse = (
   conversationId: entry.conversationId,
   action: entry.action,
   previousAgentId: entry.previousAgentId ?? null,
-  newAgentId: entry.newAgentId ?? null,
+  newAgentId: entry.newAgentId,
   performedBy: entry.performedBy,
   occurredAt: entry.createdAt.toISOString(),
   version: entry.version,

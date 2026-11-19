@@ -1,7 +1,11 @@
-/** What can happen to a conversation's assignment: an agent is assigned, or removed. */
-export const ASSIGNMENT_ACTIONS = ['assigned', 'unassigned'] as const;
+/**
+ * What the history records about a conversation's assignment. Only assignments are
+ * recorded (removing an agent is not announced), so there is one action; the field
+ * stays so a line says what it is without the reader assuming it.
+ */
+export const ASSIGNMENT_ACTIONS = ['assigned'] as const;
 
-/** One kind of assignment change. */
+/** One kind of assignment change that the history records. */
 export type AssignmentAction = (typeof ASSIGNMENT_ACTIONS)[number];
 
 /**
@@ -9,8 +13,8 @@ export type AssignmentAction = (typeof ASSIGNMENT_ACTIONS)[number];
  * changed the assignment, from which agent to which, and when.
  *
  * Pure domain contract: it knows nothing about Kafka, MongoDB or NestJS.
- * `previousAgentId` and `newAgentId` are absent (not `null`) when there was no
- * agent before or there is none after; the API turns absent into `null`.
+ * `previousAgentId` is absent (not `null`) when there was no agent before; the API
+ * turns absent into `null`. `newAgentId` is always there.
  */
 export interface NewAssignmentHistoryEntry {
   /** Id of the event this line was made from. Unique: the same event is recorded once. */
@@ -20,8 +24,8 @@ export interface NewAssignmentHistoryEntry {
   action: AssignmentAction;
   /** The agent that had the conversation before, if any. */
   previousAgentId?: string;
-  /** The agent that has the conversation now. Absent after an unassign. */
-  newAgentId?: string;
+  /** The agent that has the conversation now. */
+  newAgentId: string;
   /** User who made the change. */
   performedBy: string;
   /**

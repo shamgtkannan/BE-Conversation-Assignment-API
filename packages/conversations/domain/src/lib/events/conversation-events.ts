@@ -1,7 +1,5 @@
-/** Type of the event published after an agent is assigned to a conversation. */
+/** Type of the event announced when an agent is assigned to a conversation. */
 export const CONVERSATION_ASSIGNED_V1 = 'conversation.assigned.v1';
-/** Type of the event published after a conversation's agent is removed. */
-export const CONVERSATION_UNASSIGNED_V1 = 'conversation.unassigned.v1';
 
 /**
  * An agent was assigned to a conversation (the first one, or in place of
@@ -25,19 +23,8 @@ export interface ConversationAssigned {
   readonly version: number;
 }
 
-/** The agent was removed from a conversation. Never published when nobody was assigned. */
-export interface ConversationUnassigned {
-  readonly type: typeof CONVERSATION_UNASSIGNED_V1;
-  readonly eventId: string;
-  readonly occurredAt: Date;
-  readonly workspaceId: string;
-  readonly conversationId: string;
-  /** The agent that was removed. */
-  readonly previousAgentId: string;
-  /** User who removed the assignment. */
-  readonly unassignedBy: string;
-  readonly version: number;
-}
-
-/** Everything a conversation can announce. */
-export type ConversationEvent = ConversationAssigned | ConversationUnassigned;
+/**
+ * Everything a conversation announces: only assignments. Removing an agent is not
+ * announced, so it leaves no event and no history line.
+ */
+export type ConversationEvent = ConversationAssigned;

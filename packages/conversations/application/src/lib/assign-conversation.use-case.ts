@@ -2,7 +2,6 @@ import { isEntityId } from '@shared/core';
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
-  CONVERSATION_ASSIGNED_V1,
   Conversation,
   ConversationNotFoundError,
   IConversationEntity,
@@ -10,7 +9,7 @@ import {
   isConversationId,
 } from 'conversations-domain';
 import { ASSIGNING_ROLES } from './assigning-roles';
-import { AgentLookup, Clock, ConversationRepository, EventPublisher, IdGenerator } from './ports';
+import { AgentLookup, Clock, ConversationRepository } from './ports';
 
 /** Input of {@link AssignConversationUseCase}. All of it except the ids comes from the auth context. */
 export interface AssignConversationCommand {
@@ -29,8 +28,8 @@ export interface AssignConversationCommand {
  * workspace, replacing any current agent. Assigning the current agent again is
  * a no-op: nothing is saved.
  *
- * A real change is announced with a `conversation.assigned.v1` event, published
- * after the save. Nothing is published when nothing changed.
+ * It does not announce the change: once the conversation is saved, the change stream
+ * sees it and an event is made from it (see `AnnounceAssignmentUseCase`).
  *
  * Checks run in this order, so a caller without the right never learns what exists:
  * role, id formats, conversation, agent, then the conversation's own rules.
@@ -48,8 +47,6 @@ export class AssignConversationUseCase {
     private readonly conversations: ConversationRepository,
     private readonly agents: AgentLookup,
     private readonly clock: Clock,
-    private readonly events: EventPublisher,
-    private readonly ids: IdGenerator,
   ) {}
 
   async execute({
@@ -85,24 +82,10 @@ export class AssignConversationUseCase {
     }
 
     const conversation = Conversation.restore(stored);
-    const now = this.clock.now();
-    const assigned = conversation.assign(agentId, userId, now);
-    // The domain hands back the same instance when nothing changed: no write, no event.
+    const assigned = conversation.assign(agentId, userId, this.clock.now());
+    // The domain hands back the same instance when nothing changed: skip the write.
     if (assigned !== conversation) {
       await this.conversations.save(assigned, stored.version);
-      // shortcut: a crash, or Kafka being down, between the save and this publish loses the
-      // event (the retry finds nothing to change); upgrade to an outbox if that matters.
-      await this.events.publish({
-        type: CONVERSATION_ASSIGNED_V1,
-        eventId: this.ids.next(),
-        occurredAt: now,
-        workspaceId,
-        conversationId,
-        previousAgentId: stored.assignedAgentId ?? null,
-        agentId,
-        assignedBy: userId,
-        version: assigned.version,
-      });
     }
     return assigned;
   }

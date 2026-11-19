@@ -210,26 +210,24 @@ describe('assignment requests (real app, real MongoDB, real Kafka)', () => {
     });
   });
 
-  it('carries out an unassign request', async () => {
-    const agent = await createAgent('Ada');
+  it('carries out an unassign request: the agent is removed, and no history line is made for it', async () => {
+    const [agent, other] = [await createAgent('Ada'), await createAgent('Grace')];
     const id = await createConversation();
     await requestAssign(id, agent);
     await waitForAgent(id, agent);
 
     await requestUnassign(id);
-
     await waitForAgent(id, null);
+    await requestAssign(id, other); // behind the removal: once it shows, the removal was announced or skipped
+    await waitForAgent(id, other);
+
     const lines = await eventually(async () => {
       const found = await historyOf(id);
       if (found.length !== 2) throw new Error(`${found.length} lines`);
       return found;
     });
-    expect(lines[0]).toMatchObject({
-      action: 'unassigned',
-      previousAgentId: agent,
-      performedBy: 'user_manager',
-      version: 2,
-    });
+    expect(lines.map((line) => line.newAgentId)).toEqual([other, agent]);
+    expect(lines[0]).toMatchObject({ previousAgentId: null, version: 3 });
   });
 
   it('carries out the requests for one conversation one at a time, in the order they were made', async () => {
@@ -330,14 +328,17 @@ describe('assignment requests (real app, real MongoDB, real Kafka)', () => {
       })),
     });
     await requestUnassign(id); // behind them: once it is done, the three copies were certainly handled
-
     await waitForAgent(id, null);
+    const other = await createAgent('Grace');
+    await requestAssign(id, other); // a marker: once its line shows, a repeated line would have shown too
+    await waitForAgent(id, other);
+
     const lines = await eventually(async () => {
       const found = await historyOf(id);
       if (found.length !== 2) throw new Error(`${found.length} lines`);
       return found;
     });
-    expect(lines.map((line) => line.action)).toEqual(['unassigned', 'assigned']);
+    expect(lines.map((line) => line.newAgentId)).toEqual([other, agent]);
   });
 
   describe('RequestAssignmentUseCase', () => {

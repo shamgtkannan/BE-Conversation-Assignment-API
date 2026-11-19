@@ -95,13 +95,13 @@ describe('MongooseAssignmentHistoryRepository (real MongoDB)', () => {
       ]);
     });
 
-    it('leaves the agent fields out of the document when the line has none, rather than storing null', async () => {
+    it('leaves the replaced agent out of the document when there was none, rather than storing null', async () => {
       await repository.record(line(1));
-      await repository.record(line(2, { action: 'unassigned', newAgentId: undefined, previousAgentId: agent(1) }));
+      await repository.record(line(2, { previousAgentId: agent(1) }));
 
       const [first, second] = await rawDocuments();
       expect(first).not.toHaveProperty('previousAgentId');
-      expect(second).not.toHaveProperty('newAgentId');
+      expect(second).toMatchObject({ previousAgentId: agent(1), newAgentId: agent(2) });
     });
 
     it('stores the version as an integer', async () => {
@@ -170,14 +170,14 @@ describe('MongooseAssignmentHistoryRepository (real MongoDB)', () => {
       });
     });
 
-    it('keeps an absent agent absent (not null) in the entity', async () => {
+    it('keeps an absent replaced agent absent (not null) in the entity', async () => {
       await repository.record(line(1));
-      await repository.record(line(2, { action: 'unassigned', newAgentId: undefined, previousAgentId: agent(1) }));
+      await repository.record(line(2, { previousAgentId: agent(1) }));
 
-      const [unassigned, assigned] = await repository.list('workspace_1', conversationId, request());
+      const [reassigned, first] = await repository.list('workspace_1', conversationId, request());
 
-      expect(assigned.previousAgentId).toBeUndefined();
-      expect(unassigned.newAgentId).toBeUndefined();
+      expect(first.previousAgentId).toBeUndefined();
+      expect(reassigned.previousAgentId).toBe(agent(1));
     });
 
     it('returns only the asked conversation of the asked workspace', async () => {
@@ -261,7 +261,6 @@ describe('MongooseAssignmentHistoryRepository (real MongoDB)', () => {
       version: 1,
     });
     const assigned = () => ({ ...base(), action: 'assigned', newAgentId: agent(1) });
-    const unassigned = () => ({ ...base(), action: 'unassigned', previousAgentId: agent(1) });
     const insert = (doc: object) => model.collection.insertOne(doc);
     const refused = (doc: object) =>
       expect(insert(doc)).rejects.toMatchObject({ code: FAILED_VALIDATION });
@@ -274,13 +273,12 @@ describe('MongooseAssignmentHistoryRepository (real MongoDB)', () => {
       expect((info.options as { validator?: unknown }).validator).toBeDefined();
     });
 
-    it('accepts an assigned, a reassigned and an unassigned line', async () => {
+    it('accepts a first assignment and a reassignment', async () => {
       await expect(insert(assigned())).resolves.toBeDefined();
       await expect(insert({ ...assigned(), eventId: 'e2', previousAgentId: agent(2) })).resolves.toBeDefined();
-      await expect(insert({ ...unassigned(), eventId: 'e3' })).resolves.toBeDefined();
     });
 
-    it.each(['eventId', 'workspaceId', 'conversationId', 'action', 'performedBy', 'createdAt', 'version'])(
+    it.each(['eventId', 'workspaceId', 'conversationId', 'action', 'newAgentId', 'performedBy', 'createdAt', 'version'])(
       'refuses a line without %s',
       async (field) => {
         const doc: Record<string, unknown> = assigned();
@@ -290,23 +288,10 @@ describe('MongooseAssignmentHistoryRepository (real MongoDB)', () => {
       },
     );
 
-    it('refuses an assigned line that names no new agent', async () => {
-      const doc: Record<string, unknown> = assigned();
-      delete doc['newAgentId'];
-
-      await refused(doc);
-    });
-
-    it('refuses an unassigned line that names a new agent, or no removed agent', async () => {
-      await refused({ ...unassigned(), newAgentId: agent(2) });
-      const doc: Record<string, unknown> = unassigned();
-      delete doc['previousAgentId'];
-      await refused(doc);
-    });
-
     it('refuses null agents, an unknown action, a version below 1, and fields beyond the schema', async () => {
       await refused({ ...assigned(), previousAgentId: null });
       await refused({ ...assigned(), action: 'reassigned' });
+      await refused({ ...assigned(), action: 'unassigned' });
       await refused({ ...assigned(), version: 0 });
       await refused({ ...assigned(), extra: 'x' });
     });

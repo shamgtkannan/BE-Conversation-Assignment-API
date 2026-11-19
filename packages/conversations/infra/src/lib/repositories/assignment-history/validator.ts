@@ -7,8 +7,8 @@ import { applyValidator } from '../conversation/validator';
  * that MongoDB itself enforces, whoever writes.
  *
  * - Required fields, types, the allowed actions, no fields beyond the schema.
- * - An "assigned" line names the new agent; an "unassigned" line names the removed
- *   agent and has no new agent. Neither is ever `null`.
+ * - A line always names the new agent, and names the replaced agent only when there
+ *   was one. Neither is ever `null`.
  *
  * Keep it in step with {@link AssignmentHistoryDo}; the schema spec checks that.
  */
@@ -20,6 +20,7 @@ export const assignmentHistoryValidator: { $jsonSchema: Record<string, unknown> 
       'workspaceId',
       'conversationId',
       'action',
+      'newAgentId',
       'performedBy',
       'createdAt',
       'version',
@@ -37,17 +38,6 @@ export const assignmentHistoryValidator: { $jsonSchema: Record<string, unknown> 
       createdAt: { bsonType: 'date' },
       version: { bsonType: 'int', minimum: 1 },
     },
-    oneOf: [
-      {
-        properties: { action: { enum: ['assigned'] } },
-        required: ['newAgentId'],
-      },
-      {
-        properties: { action: { enum: ['unassigned'] } },
-        required: ['previousAgentId'],
-        not: { required: ['newAgentId'] },
-      },
-    ],
   },
 };
 

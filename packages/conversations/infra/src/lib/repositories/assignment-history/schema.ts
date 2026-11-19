@@ -36,12 +36,12 @@ export class AssignmentHistoryDo implements IAssignmentHistoryEntity {
   @Prop({ required: true, type: String, enum: ASSIGNMENT_ACTIONS })
   action!: AssignmentAction;
 
-  // Absent (not null) when there was no agent before / there is none after.
+  // Absent (not null) when there was no agent before.
   @Prop({ required: false, type: String })
   previousAgentId?: string;
 
-  @Prop({ required: false, type: String })
-  newAgentId?: string;
+  @Prop({ required: true, type: String })
+  newAgentId!: string;
 
   @Prop({ required: true, type: String })
   performedBy!: string;

@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
+import { getModelToken } from '@nestjs/mongoose';
 import {
   AGENT_LOOKUP,
   ASSIGNMENT_HISTORY_REPOSITORY,
   ASSIGNMENT_REQUEST_PUBLISHER,
   AgentLookup,
+  AnnounceAssignmentUseCase,
   AssignConversationUseCase,
   AssignmentHistoryRepository,
   AssignmentRequestPublisher,
@@ -26,11 +28,15 @@ import {
 import { GetAgentUseCase } from 'agents-application';
 import {
   AssignmentHistoryRepositoryModule,
+  ConversationChangeWatcher,
+  ConversationDo,
   ConversationRepositoryModule,
   KafkaAssignmentRequestPublisher,
   KafkaEventPublisher,
+  openConversationChangeStream,
 } from 'conversations-infra';
 import { Kafka } from 'kafkajs';
+import * as mongoose from 'mongoose';
 import { KAFKA_CLIENT, KafkaModule } from '../../common/kafka.module';
 import { KafkaProducerService } from '../../common/kafka-producer.service';
 import { SystemClock } from '../../common/system-clock';
@@ -82,24 +88,31 @@ import { ConversationsController } from './conversations.controller';
     },
     {
       provide: AssignConversationUseCase,
-      useFactory: (
-        conversations: ConversationRepository,
-        agents: AgentLookup,
-        clock: Clock,
-        events: EventPublisher,
-        ids: IdGenerator,
-      ) => new AssignConversationUseCase(conversations, agents, clock, events, ids),
-      inject: [CONVERSATION_REPOSITORY, AGENT_LOOKUP, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
+      useFactory: (conversations: ConversationRepository, agents: AgentLookup, clock: Clock) =>
+        new AssignConversationUseCase(conversations, agents, clock),
+      inject: [CONVERSATION_REPOSITORY, AGENT_LOOKUP, CLOCK],
     },
     {
       provide: UnassignConversationUseCase,
-      useFactory: (
-        conversations: ConversationRepository,
-        clock: Clock,
-        events: EventPublisher,
-        ids: IdGenerator,
-      ) => new UnassignConversationUseCase(conversations, clock, events, ids),
-      inject: [CONVERSATION_REPOSITORY, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
+      useFactory: (conversations: ConversationRepository, clock: Clock) =>
+        new UnassignConversationUseCase(conversations, clock),
+      inject: [CONVERSATION_REPOSITORY, CLOCK],
+    },
+    {
+      provide: AnnounceAssignmentUseCase,
+      useFactory: (events: EventPublisher) => new AnnounceAssignmentUseCase(events),
+      inject: [EVENT_PUBLISHER],
+    },
+    {
+      // Where assignment events come from: every change to a conversation in MongoDB, whoever
+      // makes it, is read from the change stream and announced if it assigned an agent.
+      provide: ConversationChangeWatcher,
+      useFactory: (model: mongoose.Model<ConversationDo>, announce: AnnounceAssignmentUseCase) =>
+        new ConversationChangeWatcher(
+          () => openConversationChangeStream(model),
+          (change) => announce.execute(change),
+        ),
+      inject: [getModelToken(ConversationDo.name), AnnounceAssignmentUseCase],
     },
     {
       provide: ASSIGNMENT_REQUEST_PUBLISHER,

@@ -1,6 +1,5 @@
 import {
   AssignmentNotPermittedError,
-  CONVERSATION_UNASSIGNED_V1,
   Conversation,
   ConversationNotFoundError,
   IConversationEntity,
@@ -8,14 +7,12 @@ import {
   isConversationId,
 } from 'conversations-domain';
 import { ASSIGNING_ROLES } from './assigning-roles';
-import { Clock, ConversationRepository, EventPublisher, IdGenerator } from './ports';
+import { Clock, ConversationRepository } from './ports';
 
 /** Input of {@link UnassignConversationUseCase}. All of it except the id comes from the auth context. */
 export interface UnassignConversationCommand {
   /** Workspace of the authenticated caller. */
   workspaceId: string;
-  /** Authenticated user removing the assignment; recorded in the published event. */
-  userId: string;
   /** Role of the authenticated user. Only `admin` and `manager` may unassign. */
   role: string;
   conversationId: string;
@@ -27,8 +24,7 @@ export interface UnassignConversationCommand {
  * nobody is assigned to is returned as it is and nothing is saved. A closed
  * conversation can be unassigned.
  *
- * A real change is announced with a `conversation.unassigned.v1` event, published
- * after the save. Nothing is published when nobody was assigned.
+ * Removing an agent is not announced: no event is made from it and no history line.
  *
  * Checks run in this order, so a caller without the right never learns what exists:
  * role, id format, then the conversation.
@@ -43,13 +39,10 @@ export class UnassignConversationUseCase {
   constructor(
     private readonly conversations: ConversationRepository,
     private readonly clock: Clock,
-    private readonly events: EventPublisher,
-    private readonly ids: IdGenerator,
   ) {}
 
   async execute({
     workspaceId,
-    userId,
     role,
     conversationId,
   }: UnassignConversationCommand): Promise<IConversationEntity> {
@@ -70,23 +63,10 @@ export class UnassignConversationUseCase {
     }
 
     const conversation = Conversation.restore(stored);
-    const now = this.clock.now();
-    const unassigned = conversation.unassign(now);
-    // The domain hands back the same instance when nothing changed: no write, no event.
-    if (unassigned !== conversation && stored.assignedAgentId !== undefined) {
+    const unassigned = conversation.unassign(this.clock.now());
+    // The domain hands back the same instance when nothing changed: skip the write.
+    if (unassigned !== conversation) {
       await this.conversations.save(unassigned, stored.version);
-      // shortcut: a crash, or Kafka being down, between the save and this publish loses the
-      // event (the retry finds nothing to change); upgrade to an outbox if that matters.
-      await this.events.publish({
-        type: CONVERSATION_UNASSIGNED_V1,
-        eventId: this.ids.next(),
-        occurredAt: now,
-        workspaceId,
-        conversationId,
-        previousAgentId: stored.assignedAgentId,
-        unassignedBy: userId,
-        version: unassigned.version,
-      });
     }
     return unassigned;
   }

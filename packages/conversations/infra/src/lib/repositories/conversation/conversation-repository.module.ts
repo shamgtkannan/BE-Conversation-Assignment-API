@@ -23,7 +23,8 @@ import { ensureConversationValidator } from './validator';
     { provide: CONVERSATION_REPOSITORY, useClass: MongooseConversationRepository },
     { provide: ID_GENERATOR, useClass: ObjectIdGenerator },
   ],
-  exports: [CONVERSATION_REPOSITORY, ID_GENERATOR],
+  // The model is exported too, so the change-stream watcher can be built from it.
+  exports: [CONVERSATION_REPOSITORY, ID_GENERATOR, MongooseModule],
 })
 export class ConversationRepositoryModule implements OnModuleInit {
   constructor(

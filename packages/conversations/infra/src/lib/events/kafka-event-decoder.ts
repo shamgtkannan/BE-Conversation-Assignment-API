@@ -1,6 +1,5 @@
 import {
   CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
   ConversationEvent,
 } from 'conversations-domain';
 
@@ -78,13 +77,6 @@ export function decodeConversationEvent(value: string): ConversationEvent {
         previousAgentId: fields['previousAgentId'] === null ? null : text(fields, 'previousAgentId'),
         agentId: text(fields, 'agentId'),
         assignedBy: text(fields, 'assignedBy'),
-      };
-    case CONVERSATION_UNASSIGNED_V1:
-      return {
-        type: CONVERSATION_UNASSIGNED_V1,
-        ...common,
-        previousAgentId: text(fields, 'previousAgentId'),
-        unassignedBy: text(fields, 'unassignedBy'),
       };
     default:
       throw new InvalidEventMessageError(`unknown event type ${JSON.stringify(fields['type'])}`);

@@ -13,9 +13,9 @@ type StoredLine = Omit<AssignmentHistoryDo, 'id'>;
 const DUPLICATE_KEY = 11000;
 
 /**
- * Builds the document to store, listing every field explicitly. The two agent
- * fields are only set when the line has them: undefined would otherwise be
- * written as null, and "absent" is what the schema and the validator expect.
+ * Builds the document to store, listing every field explicitly. The replaced agent
+ * is only set when the line has one: undefined would otherwise be written as null,
+ * and "absent" is what the schema and the validator expect.
  */
 const toDocument = (entry: NewAssignmentHistoryEntry): StoredLine => {
   const document: StoredLine = {
@@ -24,12 +24,12 @@ const toDocument = (entry: NewAssignmentHistoryEntry): StoredLine => {
     workspaceId: entry.workspaceId,
     conversationId: entry.conversationId,
     action: entry.action,
+    newAgentId: entry.newAgentId,
     performedBy: entry.performedBy,
     createdAt: entry.createdAt,
     version: entry.version,
   };
   if (entry.previousAgentId !== undefined) document.previousAgentId = entry.previousAgentId;
-  if (entry.newAgentId !== undefined) document.newAgentId = entry.newAgentId;
   return document;
 };
 
@@ -41,12 +41,12 @@ const toEntity = (doc: StoredLine): IAssignmentHistoryEntity => {
     workspaceId: doc.workspaceId,
     conversationId: doc.conversationId,
     action: doc.action,
+    newAgentId: doc.newAgentId,
     performedBy: doc.performedBy,
     createdAt: doc.createdAt,
     version: doc.version,
   };
   if (doc.previousAgentId != null) entity.previousAgentId = doc.previousAgentId;
-  if (doc.newAgentId != null) entity.newAgentId = doc.newAgentId;
   return entity;
 };
 

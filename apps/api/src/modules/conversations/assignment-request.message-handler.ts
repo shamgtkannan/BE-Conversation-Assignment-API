@@ -56,7 +56,7 @@ export class AssignmentRequestMessageHandler {
       if (request.action === 'assign') {
         await this.assign.execute({ workspaceId, userId, role, conversationId, agentId: request.agentId });
       } else {
-        await this.unassign.execute({ workspaceId, userId, role, conversationId });
+        await this.unassign.execute({ workspaceId, role, conversationId });
       }
     } catch (error) {
       if (!isBusinessRefusal(error)) throw error;

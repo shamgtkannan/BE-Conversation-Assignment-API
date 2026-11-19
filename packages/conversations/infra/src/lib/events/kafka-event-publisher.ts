@@ -1,12 +1,8 @@
 import { EventPublisher } from 'conversations-application';
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationEvent,
-} from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1, ConversationEvent } from 'conversations-domain';
 
-/** The Kafka topics conversation events are published to: one per event type. */
-export const CONVERSATION_EVENT_TOPICS = [CONVERSATION_ASSIGNED_V1, CONVERSATION_UNASSIGNED_V1];
+/** The Kafka topics conversation events are published to: assignments are the only event. */
+export const CONVERSATION_EVENT_TOPICS = [CONVERSATION_ASSIGNED_V1];
 
 /** What the publisher needs from a Kafka producer; kafkajs' `Producer` satisfies it. */
 export interface KafkaSender {

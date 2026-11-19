@@ -1,6 +1,7 @@
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
+  AssignmentRequestNotSentError,
   Conversation,
   ConversationClosedError,
   ConversationNotFoundError,
@@ -264,10 +265,26 @@ describe('RequestAssignmentUseCase', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it('fails when the request cannot be published, so the caller knows it was not sent', async () => {
-    jest.spyOn(publisher, 'publish').mockRejectedValue(new Error('broker not available'));
+  describe('when the request cannot be published', () => {
+    it('fails with AssignmentRequestNotSentError, so the caller knows it was not sent and may try again', async () => {
+      jest.spyOn(publisher, 'publish').mockRejectedValue(new Error('broker not available'));
 
-    await expect(useCase.execute(assign())).rejects.toThrow('broker not available');
+      await expect(useCase.execute(assign())).rejects.toBeInstanceOf(AssignmentRequestNotSentError);
+      await expect(useCase.execute(unassign())).rejects.toBeInstanceOf(AssignmentRequestNotSentError);
+    });
+
+    it('keeps the reason as the cause, for logs', async () => {
+      const reason = new Error('broker not available');
+      jest.spyOn(publisher, 'publish').mockRejectedValue(reason);
+
+      await expect(useCase.execute(assign())).rejects.toMatchObject({ cause: reason });
+    });
+
+    it('does not use the same error for a request that was refused: those keep their own errors', async () => {
+      jest.spyOn(publisher, 'publish').mockRejectedValue(new Error('broker not available'));
+
+      await expect(useCase.execute(assign({ role: 'agent' }))).rejects.toBeInstanceOf(AssignmentNotPermittedError);
+    });
   });
 
   it('fails when the stored data cannot be read, and publishes nothing', async () => {

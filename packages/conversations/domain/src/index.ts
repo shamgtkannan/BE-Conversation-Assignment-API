@@ -13,3 +13,4 @@ export * from './lib/assignment-history/assignment-history.entity';
 export * from './lib/events/assignment-requested';
 export * from './lib/events/conversation-change';
 export * from './lib/events/assigned-event-from-change';
+export * from './lib/exceptions/assignment-request-not-sent.error';

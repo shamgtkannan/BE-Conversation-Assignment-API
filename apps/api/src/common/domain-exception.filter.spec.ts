@@ -3,6 +3,7 @@ import { FILTER_CATCH_EXCEPTIONS } from '@nestjs/common/constants';
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
+  AssignmentRequestNotSentError,
   ConversationClosedError,
   ConversationConcurrentModificationError,
   ConversationNotFoundError,
@@ -36,6 +37,7 @@ describe('DomainExceptionFilter', () => {
     ['a closed conversation', new ConversationClosedError('65f1a2b3c4d5e6f708091a2b'), 409, 'Conflict'],
     ['a conversation changed by another request', new ConversationConcurrentModificationError('65f1a2b3c4d5e6f708091a2b'), 409, 'Conflict'],
     ['a duplicate agent email', new AgentEmailAlreadyExistsError('ada@example.com'), 409, 'Conflict'],
+    ['an assignment request that could not be sent', new AssignmentRequestNotSentError(new Error('broker refused')), 503, 'Service Unavailable'],
   ])('answers %s with %i', (_label, exception, statusCode, error) => {
     const { host, status, json } = fakeHost();
 
@@ -70,9 +72,10 @@ describe('DomainExceptionFilter', () => {
         AssignedAgentNotFoundError,
         ConversationClosedError,
         ConversationConcurrentModificationError,
+        AssignmentRequestNotSentError,
       ]),
     );
-    expect(caught).toHaveLength(10);
+    expect(caught).toHaveLength(11);
     expect(caught).not.toContain(Error);
   });
 });

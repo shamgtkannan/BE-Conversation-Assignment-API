@@ -1,6 +1,9 @@
 import {
+  AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
   CONVERSATION_ASSIGNMENT_REQUESTED_V1,
+  ConversationClosedError,
+  ConversationNotFoundError,
   InvalidConversationError,
   isConversationId,
 } from 'conversations-domain';
@@ -37,29 +40,32 @@ export interface RequestAssignmentResult {
 
 /**
  * Asks for a conversation's assignment to change, by publishing a request. The
- * change is made later by whoever consumes the request; this use case only checks
- * what can be checked without reading data, so a request that can never succeed
- * is not sent. Whether the conversation or the agent exists, and whether the
- * conversation is open, is decided where the request is carried out.
+ * change is made later by whoever consumes the request. Before publishing, this
+ * use case reads the stored data to check what it can, so a request that cannot
+ * succeed is refused to the caller instead of being sent. It never changes anything.
  *
- * Checks run in this order, so a caller without the right never learns what is valid:
- * role, then the id formats.
+ * The checks are the ones the assign use case makes, in the same order, so a caller
+ * without the right never learns what exists: role, id formats, conversation,
+ * agent (assigning only), then whether the conversation is closed (assigning only;
+ * removing an agent from a closed conversation is allowed). A request that passes
+ * can still be refused later if the data changes in between; that refusal is
+ * logged where the request is carried out. Assigning the agent who already has the
+ * conversation is published all the same: that it changes nothing is decided there too.
  *
  * @throws AssignmentNotPermittedError when the role is not admin or manager.
  * @throws InvalidConversationError when the conversation id or the agent id is malformed.
+ * @throws ConversationNotFoundError when the conversation is not in the workspace.
+ * @throws AssignedAgentNotFoundError when the agent to assign is not in the workspace.
+ * @throws ConversationClosedError when assigning a closed conversation.
  */
 export class RequestAssignmentUseCase {
   constructor(
     private readonly requests: AssignmentRequestPublisher,
-    // STUB: the stored data is not read yet.
     private readonly conversations: ConversationRepository,
     private readonly agents: AgentLookup,
     private readonly clock: Clock,
     private readonly ids: IdGenerator,
-  ) {
-    void this.conversations;
-    void this.agents;
-  }
+  ) {}
 
   async execute(command: RequestAssignmentCommand): Promise<RequestAssignmentResult> {
     const { workspaceId, userId, role, conversationId } = command;
@@ -77,6 +83,19 @@ export class RequestAssignmentUseCase {
         'assignedAgentId',
         'Assigned agent id must be 24 lowercase hexadecimal characters',
       );
+    }
+
+    const stored = await this.conversations.findById(workspaceId, conversationId);
+    if (!stored) {
+      throw new ConversationNotFoundError(conversationId);
+    }
+    if (command.action === 'assign') {
+      if (!(await this.agents.exists(workspaceId, command.agentId))) {
+        throw new AssignedAgentNotFoundError(command.agentId);
+      }
+      if (stored.status === 'closed') {
+        throw new ConversationClosedError(conversationId);
+      }
     }
 
     const commandId = this.ids.next();

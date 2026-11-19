@@ -7,11 +7,22 @@ import { RawChangeStream } from './conversation-change-watcher';
  * change, the document after it and the document just before it. It starts from the
  * moment it is opened: changes made earlier are not replayed.
  *
- * STUB: not implemented yet.
+ * `required` makes MongoDB fail the stream, loudly, if the images were not switched
+ * on for the collection, instead of reporting changes without what they changed from.
+ *
+ * @throws Error when the connection is not ready yet; the watcher tries again.
  */
 export function openConversationChangeStream(
   model: mongoose.Model<ConversationDo>,
 ): RawChangeStream {
-  void model;
-  throw new Error('not implemented');
+  const db = model.db.db;
+  if (!db) {
+    throw new Error('MongoDB connection is not ready');
+  }
+  return db
+    .collection(model.collection.collectionName)
+    .watch([], {
+      fullDocument: 'required',
+      fullDocumentBeforeChange: 'required',
+    }) as unknown as RawChangeStream;
 }

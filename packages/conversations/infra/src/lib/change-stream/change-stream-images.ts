@@ -6,12 +6,9 @@ export interface ImagesDb {
 /**
  * Makes MongoDB keep the document before and after every change to `collection`,
  * so a change stream can report what an update or a replace changed from. Safe to
- * run on every start: switching on what is already on does nothing.
- *
- * STUB: not implemented yet.
+ * run on every start: switching on what is already on does nothing. A refusal is
+ * passed on, so a start without the images does not go unnoticed.
  */
 export async function enableChangeStreamImages(db: ImagesDb, collection: string): Promise<void> {
-  void db;
-  void collection;
-  throw new Error('not implemented');
+  await db.command({ collMod: collection, changeStreamPreAndPostImages: { enabled: true } });
 }

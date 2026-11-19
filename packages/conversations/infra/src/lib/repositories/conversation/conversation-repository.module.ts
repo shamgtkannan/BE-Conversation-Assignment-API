@@ -5,13 +5,15 @@ import { MongooseConversationRepository } from './conversation.repository';
 import { ObjectIdGenerator } from './object-id-generator';
 import * as mongoose from 'mongoose';
 import { ConversationDo, ConversationDoSchema } from './schema';
+import { enableChangeStreamImages } from '../../change-stream/change-stream-images';
 import { ensureConversationValidator } from './validator';
 
 /**
  * Binds the application's conversation ports to their MongoDB implementations.
  * Needs a Mongoose connection (`MongooseModule.forRoot*`) in the host app.
  * On start it also sets the collection validator, so MongoDB enforces the
- * single-document rules itself.
+ * single-document rules itself, and switches on the before and after images that
+ * the change stream reads.
  */
 @Module({
   imports: [
@@ -37,5 +39,7 @@ export class ConversationRepositoryModule implements OnModuleInit {
     // here instead of leaving the API running without its unique index.
     await this.model.init();
     await ensureConversationValidator(this.connection.db);
+    // So a change stream can report what a change replaced (the agent before an assignment).
+    await enableChangeStreamImages(this.connection.db, 'conversations');
   }
 }

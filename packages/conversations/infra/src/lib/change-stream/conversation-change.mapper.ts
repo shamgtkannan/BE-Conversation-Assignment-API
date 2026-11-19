@@ -1,8 +1,7 @@
 import { ConversationChange } from 'conversations-domain';
-import { ConversationDo } from '../repositories/conversation/schema';
+import { StoredConversation, toEntity } from '../repositories/conversation/conversation.mapper';
 
-/** Every field MongoDB stores for a conversation. `id` is the `_id` here. */
-export type StoredConversation = Omit<ConversationDo, 'id'>;
+export type { StoredConversation };
 
 /**
  * One change as MongoDB's change stream delivers it: the part of the driver's
@@ -23,11 +22,18 @@ export interface RawConversationChange {
  * Turns a change MongoDB reported into the domain's {@link ConversationChange}:
  * stored documents become plain conversations, and the change's id becomes the
  * change id. Returns `null` for a change that has no document after it (a delete),
- * which says nothing about an assignment.
- *
- * STUB: not implemented yet.
+ * which says nothing about an assignment. The conversations are read the way the
+ * repository reads them, so an assignment stored as null, or a document from before
+ * the version existed, comes out the same here as there.
  */
 export function toConversationChange(raw: RawConversationChange): ConversationChange | null {
-  void raw;
-  throw new Error('not implemented');
+  const { fullDocument, fullDocumentBeforeChange } = raw;
+  if (!fullDocument) {
+    return null;
+  }
+  return {
+    changeId: raw._id._data,
+    ...(fullDocumentBeforeChange && { before: toEntity(fullDocumentBeforeChange) }),
+    after: toEntity(fullDocument),
+  };
 }

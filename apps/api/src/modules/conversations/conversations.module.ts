@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import {
   AGENT_LOOKUP,
+  ASSIGNMENT_HISTORY_REPOSITORY,
   AgentLookup,
   AssignConversationUseCase,
+  AssignmentHistoryRepository,
   CLOCK,
   CONVERSATION_REPOSITORY,
   Clock,
@@ -13,16 +15,26 @@ import {
   GetConversationUseCase,
   ID_GENERATOR,
   IdGenerator,
+  ListAssignmentHistoryUseCase,
   ListConversationsUseCase,
+  RecordAssignmentHistoryUseCase,
   UnassignConversationUseCase,
 } from 'conversations-application';
 import { GetAgentUseCase } from 'agents-application';
-import { ConversationRepositoryModule, KafkaEventPublisher } from 'conversations-infra';
-import { KafkaModule } from '../../common/kafka.module';
+import {
+  AssignmentHistoryRepositoryModule,
+  ConversationRepositoryModule,
+  KafkaEventPublisher,
+} from 'conversations-infra';
+import { Kafka } from 'kafkajs';
+import { KAFKA_CLIENT, KafkaModule } from '../../common/kafka.module';
 import { KafkaProducerService } from '../../common/kafka-producer.service';
 import { SystemClock } from '../../common/system-clock';
 import { AgentsModule } from '../agents/agents.module';
 import { AgentsBackedAgentLookup } from './agents-backed-agent-lookup';
+import { AssignmentHistoryConsumer } from './assignment-history.consumer';
+import { AssignmentHistoryController } from './assignment-history.controller';
+import { AssignmentHistoryMessageHandler } from './assignment-history.message-handler';
 import { ConversationsController } from './conversations.controller';
 
 /**
@@ -31,8 +43,13 @@ import { ConversationsController } from './conversations.controller';
  * decorators, are assembled here with `useFactory`.
  */
 @Module({
-  imports: [ConversationRepositoryModule, AgentsModule, KafkaModule],
-  controllers: [ConversationsController],
+  imports: [
+    ConversationRepositoryModule,
+    AssignmentHistoryRepositoryModule,
+    AgentsModule,
+    KafkaModule,
+  ],
+  controllers: [ConversationsController, AssignmentHistoryController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
     {
@@ -77,6 +94,30 @@ import { ConversationsController } from './conversations.controller';
         ids: IdGenerator,
       ) => new UnassignConversationUseCase(conversations, clock, events, ids),
       inject: [CONVERSATION_REPOSITORY, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
+    },
+    {
+      provide: RecordAssignmentHistoryUseCase,
+      useFactory: (history: AssignmentHistoryRepository) =>
+        new RecordAssignmentHistoryUseCase(history),
+      inject: [ASSIGNMENT_HISTORY_REPOSITORY],
+    },
+    {
+      provide: ListAssignmentHistoryUseCase,
+      useFactory: (conversations: ConversationRepository, history: AssignmentHistoryRepository) =>
+        new ListAssignmentHistoryUseCase(conversations, history),
+      inject: [CONVERSATION_REPOSITORY, ASSIGNMENT_HISTORY_REPOSITORY],
+    },
+    {
+      provide: AssignmentHistoryMessageHandler,
+      useFactory: (record: RecordAssignmentHistoryUseCase) =>
+        new AssignmentHistoryMessageHandler(record),
+      inject: [RecordAssignmentHistoryUseCase],
+    },
+    {
+      provide: AssignmentHistoryConsumer,
+      useFactory: (kafka: Kafka, handler: AssignmentHistoryMessageHandler) =>
+        new AssignmentHistoryConsumer(kafka, handler),
+      inject: [KAFKA_CLIENT, AssignmentHistoryMessageHandler],
     },
     {
       provide: ListConversationsUseCase,

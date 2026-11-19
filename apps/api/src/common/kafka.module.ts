@@ -4,6 +4,9 @@ import { CONVERSATION_EVENT_TOPICS } from 'conversations-infra';
 import { Kafka, logLevel } from 'kafkajs';
 import { KafkaProducerService } from './kafka-producer.service';
 
+/** Injection token for the application's kafkajs client. */
+export const KAFKA_CLIENT = Symbol('KAFKA_CLIENT');
+
 /**
  * The application's Kafka connection, built from environment variables.
  *
@@ -15,23 +18,25 @@ import { KafkaProducerService } from './kafka-producer.service';
   imports: [ConfigModule],
   providers: [
     {
-      provide: KafkaProducerService,
+      provide: KAFKA_CLIENT,
       inject: [ConfigService],
       useFactory: (config: ConfigService) =>
-        new KafkaProducerService(
-          new Kafka({
-            clientId: config.get<string>('KAFKA_CLIENT_ID') ?? 'conversation-assignment-api',
-            brokers: config.getOrThrow<string>('KAFKA_BROKERS').split(','),
-            // Fail fast with a clear error when Kafka is not running.
-            connectionTimeout: 3000,
-            requestTimeout: 5000,
-            retry: { retries: 2, initialRetryTime: 100 },
-            logLevel: logLevel.ERROR,
-          }),
-          CONVERSATION_EVENT_TOPICS,
-        ),
+        new Kafka({
+          clientId: config.get<string>('KAFKA_CLIENT_ID') ?? 'conversation-assignment-api',
+          brokers: config.getOrThrow<string>('KAFKA_BROKERS').split(','),
+          // Fail fast with a clear error when Kafka is not running.
+          connectionTimeout: 3000,
+          requestTimeout: 5000,
+          retry: { retries: 2, initialRetryTime: 100 },
+          logLevel: logLevel.ERROR,
+        }),
+    },
+    {
+      provide: KafkaProducerService,
+      inject: [KAFKA_CLIENT],
+      useFactory: (kafka: Kafka) => new KafkaProducerService(kafka, CONVERSATION_EVENT_TOPICS),
     },
   ],
-  exports: [KafkaProducerService],
+  exports: [KAFKA_CLIENT, KafkaProducerService],
 })
 export class KafkaModule {}

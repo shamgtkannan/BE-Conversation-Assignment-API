@@ -75,8 +75,8 @@ export class UnassignConversationUseCase {
     // The domain hands back the same instance when nothing changed: no write, no event.
     if (unassigned !== conversation && stored.assignedAgentId !== undefined) {
       await this.conversations.save(unassigned, stored.version);
-      // shortcut: a crash between save and publish loses this event; closed by the
-      // command-id redelivery step (plan step 6).
+      // shortcut: a crash, or Kafka being down, between the save and this publish loses the
+      // event (the retry finds nothing to change); upgrade to an outbox if that matters.
       await this.events.publish({
         type: CONVERSATION_UNASSIGNED_V1,
         eventId: this.ids.next(),

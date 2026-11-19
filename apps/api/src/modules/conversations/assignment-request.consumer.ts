@@ -1,44 +1,32 @@
-import { Logger, OnApplicationShutdown, OnModuleInit } from '@nestjs/common';
-import { Consumer } from 'kafkajs';
+import { ASSIGNMENT_REQUEST_TOPICS } from 'conversations-infra';
+import { KafkaTopicConsumer, TopicKafkaClient } from '../../common/kafka-topic-consumer';
 import { AssignmentRequestMessageHandler } from './assignment-request.message-handler';
 
 /** The consumer group that carries out assignment requests. */
 export const REQUEST_CONSUMER_GROUP = 'conversation-writer';
 
 /** The part of a kafkajs `Kafka` client this consumer uses. */
-export type RequestKafkaClient = { consumer(config: { groupId: string }): Consumer };
+export type RequestKafkaClient = TopicKafkaClient;
 
 /**
  * Reads assignment requests from Kafka and hands each one to the handler. The
  * first Kafka layer of the design: it turns a request into a saved change.
  *
- * STUB: nothing is consumed yet.
+ * - A new group starts at the newest message, never at the beginning: a request
+ *   changes data, so requests from long ago must not be carried out again.
+ * - The connection, retry and shutdown behaviour is {@link KafkaTopicConsumer}'s.
  */
-export class AssignmentRequestConsumer implements OnModuleInit, OnApplicationShutdown {
-  private readonly logger = new Logger(AssignmentRequestConsumer.name);
-
+export class AssignmentRequestConsumer extends KafkaTopicConsumer {
   constructor(
-    private readonly kafka: RequestKafkaClient,
-    private readonly handler: Pick<AssignmentRequestMessageHandler, 'handle'>,
-    private readonly options: { retryDelayMs?: number } = {},
+    kafka: RequestKafkaClient,
+    handler: Pick<AssignmentRequestMessageHandler, 'handle'>,
+    options: { retryDelayMs?: number } = {},
   ) {
-    void this.kafka;
-    void this.handler;
-    void this.options;
-    void this.logger;
-  }
-
-  /** Starts in the background: the API must start even when Kafka is down. */
-  onModuleInit(): void {
-    // STUB
-  }
-
-  /** Connects and runs; while Kafka is unreachable, tries again after a delay. */
-  async start(): Promise<void> {
-    // STUB
-  }
-
-  async onApplicationShutdown(): Promise<void> {
-    // STUB
+    super(
+      kafka,
+      { groupId: REQUEST_CONSUMER_GROUP, topics: ASSIGNMENT_REQUEST_TOPICS, fromBeginning: false },
+      handler,
+      options,
+    );
   }
 }

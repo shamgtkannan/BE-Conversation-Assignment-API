@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { CONVERSATION_EVENT_TOPICS } from 'conversations-infra';
+import { ASSIGNMENT_REQUEST_TOPICS, CONVERSATION_EVENT_TOPICS } from 'conversations-infra';
 import { Kafka, logLevel } from 'kafkajs';
 import { KafkaProducerService } from './kafka-producer.service';
 
@@ -34,7 +34,11 @@ export const KAFKA_CLIENT = Symbol('KAFKA_CLIENT');
     {
       provide: KafkaProducerService,
       inject: [KAFKA_CLIENT],
-      useFactory: (kafka: Kafka) => new KafkaProducerService(kafka, CONVERSATION_EVENT_TOPICS),
+      useFactory: (kafka: Kafka) =>
+        new KafkaProducerService(kafka, [
+          ...CONVERSATION_EVENT_TOPICS,
+          ...ASSIGNMENT_REQUEST_TOPICS,
+        ]),
     },
   ],
   exports: [KAFKA_CLIENT, KafkaProducerService],

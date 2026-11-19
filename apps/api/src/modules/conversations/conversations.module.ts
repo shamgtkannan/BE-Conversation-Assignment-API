@@ -2,9 +2,11 @@ import { Module } from '@nestjs/common';
 import {
   AGENT_LOOKUP,
   ASSIGNMENT_HISTORY_REPOSITORY,
+  ASSIGNMENT_REQUEST_PUBLISHER,
   AgentLookup,
   AssignConversationUseCase,
   AssignmentHistoryRepository,
+  AssignmentRequestPublisher,
   CLOCK,
   CONVERSATION_REPOSITORY,
   Clock,
@@ -18,12 +20,14 @@ import {
   ListAssignmentHistoryUseCase,
   ListConversationsUseCase,
   RecordAssignmentHistoryUseCase,
+  RequestAssignmentUseCase,
   UnassignConversationUseCase,
 } from 'conversations-application';
 import { GetAgentUseCase } from 'agents-application';
 import {
   AssignmentHistoryRepositoryModule,
   ConversationRepositoryModule,
+  KafkaAssignmentRequestPublisher,
   KafkaEventPublisher,
 } from 'conversations-infra';
 import { Kafka } from 'kafkajs';
@@ -35,6 +39,8 @@ import { AgentsBackedAgentLookup } from './agents-backed-agent-lookup';
 import { AssignmentHistoryConsumer } from './assignment-history.consumer';
 import { AssignmentHistoryController } from './assignment-history.controller';
 import { AssignmentHistoryMessageHandler } from './assignment-history.message-handler';
+import { AssignmentRequestConsumer } from './assignment-request.consumer';
+import { AssignmentRequestMessageHandler } from './assignment-request.message-handler';
 import { ConversationsController } from './conversations.controller';
 
 /**
@@ -94,6 +100,29 @@ import { ConversationsController } from './conversations.controller';
         ids: IdGenerator,
       ) => new UnassignConversationUseCase(conversations, clock, events, ids),
       inject: [CONVERSATION_REPOSITORY, CLOCK, EVENT_PUBLISHER, ID_GENERATOR],
+    },
+    {
+      provide: ASSIGNMENT_REQUEST_PUBLISHER,
+      useFactory: (producer: KafkaProducerService) => new KafkaAssignmentRequestPublisher(producer),
+      inject: [KafkaProducerService],
+    },
+    {
+      provide: RequestAssignmentUseCase,
+      useFactory: (requests: AssignmentRequestPublisher, clock: Clock, ids: IdGenerator) =>
+        new RequestAssignmentUseCase(requests, clock, ids),
+      inject: [ASSIGNMENT_REQUEST_PUBLISHER, CLOCK, ID_GENERATOR],
+    },
+    {
+      provide: AssignmentRequestMessageHandler,
+      useFactory: (assign: AssignConversationUseCase, unassign: UnassignConversationUseCase) =>
+        new AssignmentRequestMessageHandler(assign, unassign),
+      inject: [AssignConversationUseCase, UnassignConversationUseCase],
+    },
+    {
+      provide: AssignmentRequestConsumer,
+      useFactory: (kafka: Kafka, handler: AssignmentRequestMessageHandler) =>
+        new AssignmentRequestConsumer(kafka, handler),
+      inject: [KAFKA_CLIENT, AssignmentRequestMessageHandler],
     },
     {
       provide: RecordAssignmentHistoryUseCase,

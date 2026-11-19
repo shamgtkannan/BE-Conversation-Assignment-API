@@ -4,7 +4,7 @@ export const CONVERSATION_ASSIGNMENT_REQUESTED_V1 = 'conversation.assignment-req
 /** What every assignment request carries. */
 interface AssignmentRequestBase {
   readonly type: typeof CONVERSATION_ASSIGNMENT_REQUESTED_V1;
-  /** Unique per request. Names the request through its whole life, and identifies a repeat of it. */
+  /** Unique per request. Names the request through its whole life, so a reply can be matched to it. */
   readonly commandId: string;
   /** When the request was made, UTC. */
   readonly requestedAt: Date;

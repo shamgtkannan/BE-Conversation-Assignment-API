@@ -7,3 +7,4 @@ export * from './lib/unassign-conversation.use-case';
 export * from './lib/list-assignment-history.use-case';
 export * from './lib/record-assignment-history.use-case';
 export * from './lib/request-assignment.use-case';
+export * from './lib/announce-assignment.use-case';

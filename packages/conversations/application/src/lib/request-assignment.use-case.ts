@@ -6,7 +6,13 @@ import {
 } from 'conversations-domain';
 import { isEntityId } from '@shared/core';
 import { ASSIGNING_ROLES } from './assigning-roles';
-import { AssignmentRequestPublisher, Clock, IdGenerator } from './ports';
+import {
+  AgentLookup,
+  AssignmentRequestPublisher,
+  Clock,
+  ConversationRepository,
+  IdGenerator,
+} from './ports';
 
 /** Who is asking, and what for. All of it except the ids comes from the auth context. */
 interface RequestAssignmentBase {
@@ -45,9 +51,15 @@ export interface RequestAssignmentResult {
 export class RequestAssignmentUseCase {
   constructor(
     private readonly requests: AssignmentRequestPublisher,
+    // STUB: the stored data is not read yet.
+    private readonly conversations: ConversationRepository,
+    private readonly agents: AgentLookup,
     private readonly clock: Clock,
     private readonly ids: IdGenerator,
-  ) {}
+  ) {
+    void this.conversations;
+    void this.agents;
+  }
 
   async execute(command: RequestAssignmentCommand): Promise<RequestAssignmentResult> {
     const { workspaceId, userId, role, conversationId } = command;

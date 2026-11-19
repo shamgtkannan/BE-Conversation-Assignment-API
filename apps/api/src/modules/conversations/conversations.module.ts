@@ -108,9 +108,20 @@ import { ConversationsController } from './conversations.controller';
     },
     {
       provide: RequestAssignmentUseCase,
-      useFactory: (requests: AssignmentRequestPublisher, clock: Clock, ids: IdGenerator) =>
-        new RequestAssignmentUseCase(requests, clock, ids),
-      inject: [ASSIGNMENT_REQUEST_PUBLISHER, CLOCK, ID_GENERATOR],
+      useFactory: (
+        requests: AssignmentRequestPublisher,
+        conversations: ConversationRepository,
+        agents: AgentLookup,
+        clock: Clock,
+        ids: IdGenerator,
+      ) => new RequestAssignmentUseCase(requests, conversations, agents, clock, ids),
+      inject: [
+        ASSIGNMENT_REQUEST_PUBLISHER,
+        CONVERSATION_REPOSITORY,
+        AGENT_LOOKUP,
+        CLOCK,
+        ID_GENERATOR,
+      ],
     },
     {
       provide: AssignmentRequestMessageHandler,

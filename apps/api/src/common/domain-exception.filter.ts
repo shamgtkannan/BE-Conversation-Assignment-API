@@ -1,9 +1,10 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpStatus, Logger } from '@nestjs/common';
 import { InvalidPageRequestError } from '@shared/core';
 import { AgentEmailAlreadyExistsError, AgentNotFoundError, InvalidAgentError } from 'agents-domain';
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
+  AssignmentRequestNotSentError,
   ConversationClosedError,
   ConversationConcurrentModificationError,
   ConversationNotFoundError,
@@ -24,7 +25,8 @@ type DomainError =
   | AssignmentNotPermittedError
   | AssignedAgentNotFoundError
   | ConversationClosedError
-  | ConversationConcurrentModificationError;
+  | ConversationConcurrentModificationError
+  | AssignmentRequestNotSentError;
 
 /** Maps each domain error to its HTTP status and the matching reason phrase. */
 const statusOf = (exception: DomainError): [number, string] => {
@@ -43,6 +45,9 @@ const statusOf = (exception: DomainError): [number, string] => {
     return [HttpStatus.CONFLICT, 'Conflict'];
   }
   if (exception instanceof AssignmentNotPermittedError) return [HttpStatus.FORBIDDEN, 'Forbidden'];
+  if (exception instanceof AssignmentRequestNotSentError) {
+    return [HttpStatus.SERVICE_UNAVAILABLE, 'Service Unavailable'];
+  }
   return [HttpStatus.BAD_REQUEST, 'Bad Request'];
 };
 
@@ -53,6 +58,7 @@ const statusOf = (exception: DomainError): [number, string] => {
  * - {@link InvalidAgentError}, {@link InvalidConversationError} and
  *   {@link InvalidPageRequestError} become 400.
  * - {@link AssignmentNotPermittedError} becomes 403.
+ * - {@link AssignmentRequestNotSentError} becomes 503; why it failed is logged, never shown.
  * - {@link AgentNotFoundError}, {@link ConversationNotFoundError} and
  *   {@link AssignedAgentNotFoundError} become 404.
  * - {@link AgentEmailAlreadyExistsError}, {@link ConversationClosedError} and
@@ -71,10 +77,16 @@ const statusOf = (exception: DomainError): [number, string] => {
   AssignedAgentNotFoundError,
   ConversationClosedError,
   ConversationConcurrentModificationError,
+  AssignmentRequestNotSentError,
 )
 export class DomainExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(DomainExceptionFilter.name);
+
   catch(exception: DomainError, host: ArgumentsHost): void {
     const [statusCode, error] = statusOf(exception);
+    if (exception instanceof AssignmentRequestNotSentError) {
+      this.logger.warn(`Assignment request not sent: ${String(exception.cause)}`);
+    }
 
     host
       .switchToHttp()

@@ -1,6 +1,7 @@
 import {
   AssignedAgentNotFoundError,
   AssignmentNotPermittedError,
+  AssignmentRequestNotSentError,
   CONVERSATION_ASSIGNMENT_REQUESTED_V1,
   ConversationClosedError,
   ConversationNotFoundError,
@@ -57,6 +58,8 @@ export interface RequestAssignmentResult {
  * @throws ConversationNotFoundError when the conversation is not in the workspace.
  * @throws AssignedAgentNotFoundError when the agent to assign is not in the workspace.
  * @throws ConversationClosedError when assigning a closed conversation.
+ * @throws AssignmentRequestNotSentError when the request could not be published; the
+ * reason is kept as its `cause`. Reading failures are passed on as they are.
  */
 export class RequestAssignmentUseCase {
   constructor(
@@ -108,11 +111,16 @@ export class RequestAssignmentUseCase {
       requestedBy: userId,
       role,
     } as const;
-    await this.requests.publish(
-      command.action === 'assign'
-        ? { ...base, action: 'assign', agentId: command.agentId }
-        : { ...base, action: 'unassign' },
-    );
+    try {
+      await this.requests.publish(
+        command.action === 'assign'
+          ? { ...base, action: 'assign', agentId: command.agentId }
+          : { ...base, action: 'unassign' },
+      );
+    } catch (error) {
+      // The checks passed but nobody will carry the request out: say so, and keep why for the logs.
+      throw new AssignmentRequestNotSentError(error);
+    }
     return { commandId };
   }
 }

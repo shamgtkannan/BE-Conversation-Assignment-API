@@ -42,6 +42,7 @@ import { KafkaProducerService } from '../../common/kafka-producer.service';
 import { SystemClock } from '../../common/system-clock';
 import { AgentsModule } from '../agents/agents.module';
 import { AgentsBackedAgentLookup } from './agents-backed-agent-lookup';
+import { AssignmentController } from './assignment.controller';
 import { AssignmentHistoryConsumer } from './assignment-history.consumer';
 import { AssignmentHistoryController } from './assignment-history.controller';
 import { AssignmentHistoryMessageHandler } from './assignment-history.message-handler';
@@ -61,7 +62,7 @@ import { ConversationsController } from './conversations.controller';
     AgentsModule,
     KafkaModule,
   ],
-  controllers: [ConversationsController, AssignmentHistoryController],
+  controllers: [ConversationsController, AssignmentController, AssignmentHistoryController],
   providers: [
     { provide: CLOCK, useClass: SystemClock },
     {

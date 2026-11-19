@@ -140,13 +140,14 @@ Ids are MongoDB ObjectIds exposed as 24-character lowercase hex strings, for exa
 
 | Status | When |
 |---|---|
-| `200` | Success for reads, assign and unassign |
+| `200` | Success for reads. For assign and unassign it means the request was sent (see below) |
 | `201` | An agent or conversation was created |
 | `400` | Invalid body, query or id, unknown fields, bad paging token or limit |
 | `401` | Missing or invalid auth headers |
 | `403` | The `agent` role tries to assign or unassign |
 | `404` | Conversation or agent not found in the caller's workspace |
-| `409` | Assigning a closed conversation, a duplicate agent email in the workspace, or a conversation that someone else changed while the request was running (send it again) |
+| `409` | Assigning a closed conversation, or a duplicate agent email in the workspace |
+| `503` | Assign or unassign passed every check but the request could not be sent (Kafka is unreachable). Nothing was changed; try again |
 
 Error bodies from the domain and the auth guard look like this:
 
@@ -214,33 +215,25 @@ curl -i -X PATCH http://localhost:3000/conversations/<conversation-id>/assignmen
 curl -i -X DELETE http://localhost:3000/conversations/<conversation-id>/assignment "${H[@]}"
 ```
 
-Both return `200` with the whole conversation. After an assign:
+Both answer `200` at once with the name of the request:
 
 ```json
-{
-  "id": "65f1a2b3c4d5e6f708091a2b",
-  "subject": "Unable to log in",
-  "status": "open",
-  "workspaceId": "workspace_1",
-  "assignedAgentId": "65f1a2b3c4d5e6f708091a2c",
-  "assignedAt": "2026-11-13T08:30:00.000Z",
-  "assignedBy": "user_123",
-  "createdAt": "2026-11-13T08:00:00.000Z",
-  "updatedAt": "2026-11-13T08:30:00.000Z"
-}
+{ "commandId": "6afec6cbb7b6eecb096994af", "status": "requested" }
 ```
 
-After an unassign, `assignedAgentId`, `assignedAt` and `assignedBy` are `null`.
+**`200` means the request was sent, not that the change has been made.** The request goes to Kafka and a consumer in the API makes the change a moment later (usually well under a second), so a `GET /conversations/:id` right after can still show the old state. Read the conversation, or `GET /conversations/:id/assignment-history`, to see the result. After an unassign, `assignedAgentId`, `assignedAt` and `assignedBy` are `null` in the conversation.
+
+What can be known before sending is still answered by the call itself: `403`, `400`, `404`, `409` as listed below, and `503` when the request cannot be sent. A conversation closed, or an agent removed, between the checks and the change is refused later by the consumer and only logged; the caller has already had its `200`.
 
 Rules, as implemented:
 
 - A conversation has at most one agent. Assigning a different agent replaces the previous one, along with `assignedAt` and `assignedBy`.
 - The agent and the conversation must both exist in the caller's workspace, otherwise `404`.
 - A closed conversation cannot be assigned or reassigned (`409`), even to its current agent.
-- Assigning the agent who is already assigned changes nothing and writes nothing: `assignedAt`, `assignedBy` and `updatedAt` stay as they were.
+- Assigning the agent who is already assigned changes nothing and writes nothing: `assignedAt`, `assignedBy` and `updatedAt` stay as they were, and no event or history line is made.
 - Unassigning clears `assignedAgentId`, `assignedAt` and `assignedBy`. They become `null` in the response and are absent in the database. Unassigning an unassigned conversation is a harmless `200`. A closed conversation can be unassigned.
-- The checks run in this order, so a caller without the right never learns what exists: role (`403`), id formats (`400`), conversation (`404`), agent (`404`), closed (`409`). Body validation (`400`) runs before all of them.
-- Simultaneous changes to one conversation are safe (optimistic concurrency): each request is written only if nobody changed the conversation since it was read. Of several requests that read the same state, exactly one wins; the others get `409` and can simply be sent again. See the decision below.
+- The checks run before the request is sent, in this order, so a caller without the right never learns what exists: role (`403`), id formats (`400`), conversation (`404`), agent (`404`), closed (`409`, assigning only). Body validation (`400`) runs before all of them.
+- Simultaneous requests for one conversation are all accepted and are carried out one at a time, in the order Kafka holds them (they share a partition because the message key is the conversation id), so none is lost: ten requests for ten agents give ten changes and ten history lines, in a chain. The version number still guards each change in MongoDB (see the decision below); a clash there is retried by Kafka, not shown to the caller.
 
 To look at the stored documents:
 
@@ -364,7 +357,7 @@ MongoDB indexes, declared on the schemas:
 - **Another workspace's resource is a `404`**, the same as a missing one.
 - **Where the assignment and a convention disagree**, the assignment wins, for example `403` for a forbidden role and `409` for a duplicate email.
 - **Unassigning a closed conversation is allowed.** The assignment freezes only assigning and reassigning.
-- **Concurrency (bonus 3) uses a version number.** Every conversation stores a `version` that goes up by one with each assignment change. Saving a change is one atomic MongoDB update that matches the id, the workspace and the version that was read, so of several simultaneous requests exactly one is written and the rest fail with `409` (nothing is written for them). A time stamp would not do, because two changes can share a millisecond. The version is internal and not part of the API response; documents stored before it existed count as version 0. Requests that were not in step with each other can all succeed one after another, which is correct: the version equals the number of successful changes.
+- **Concurrency (bonus 3) uses a version number.** Every conversation stores a `version` that goes up by one with each assignment change. Saving a change is one atomic MongoDB update that matches the id, the workspace and the version that was read, so of several writers that read the same state exactly one is written and the others get `ConversationConcurrentModificationError` (nothing is written for them). A time stamp would not do, because two changes can share a millisecond. The version is internal and not part of the API response; documents stored before it existed count as version 0. Through the HTTP API a caller never sees that clash: requests for one conversation are carried out one at a time, in order, by the request consumer, so a clash can only come from another writer (a script, a second API instance during a restart) and is retried by Kafka. The guard is proven directly by the repository and use-case tests, which make two saves read the same version and show that exactly one is written.
 - **The history is recorded from the events, not by the request.** A Kafka consumer inside the API (group `conversation-history`) reads `conversation.assigned.v1` and writes one line per event to the `assignment_history` collection. Each event has a unique id and the collection has a unique index on it, so an event that Kafka delivers more than once is recorded once. A message that is not a valid event is logged and skipped instead of blocking the ones behind it; a failure to write is retried by Kafka. A new group reads the topic from the beginning, so events published before the consumer first ran are not missed. The consumer starts in the background, so the API still starts while Kafka is down and the consumer connects when it can; after a Kafka restart it rejoins by itself, which can take about half a minute, so history lines made meanwhile appear that much later. Lines are ordered by the time of the change, with the id as tiebreaker.
 - **Assignment requests can be carried out from Kafka.** `RequestAssignmentUseCase` publishes `conversation.assignment-requested.v1` (the user, their role, the action and the agent, keyed by conversation id) after checking only what needs no stored data: the role (`403`) and the id formats (`400`). A consumer in the API (group `conversation-writer`) reads each request and hands it to the same assign or unassign use case the HTTP endpoints use, which makes the change and publishes the event; the history consumer then records it. Requests for one conversation share a partition, so they are carried out one at a time, in order. Business refusals (not allowed, not found, closed) are logged and finished; a database failure or a version clash is retried by Kafka. The group reads only new requests, never the old ones, because a request changes data. **The HTTP endpoints do not use this path yet:** `PATCH` and `DELETE` still write directly, and moving them onto it (waiting for the result so the responses stay as specified) is the next step.
 - **Reliability.** Kafka is the only durable record of a request, and nothing about requests or events is stored in MongoDB for delivery. A request message is committed only after it was handled, so a failure makes Kafka deliver it again (at least once). Repeats are harmless: assigning the agent who is already assigned, and unassigning when nobody is, change nothing and so produce no event, and the history ignores an event it has recorded. Events come from the change stream (next point), which does not depend on the request that made the change, so the API answers even while Kafka is down: the change is saved, and the event is published, in order, as soon as Kafka is back. Known limits: (1) a change saved while the watcher is not running (the API stopped, or the stream reconnecting) is never announced, because the watcher keeps no saved position; (2) if the process dies while an event waits for Kafka, that event is lost; (3) Kafka confirms request messages in batches, so a hard crash can replay the last few requests, which briefly puts a conversation back on an older agent and adds stray history lines, though the final state is correct because the replay is in order; (4) several API instances each watch and would publish the same event with the same id, which the history ignores. A saved resume token, a transactional outbox or a stored command id would close these; they were left out on purpose to keep delivery in Kafka alone.

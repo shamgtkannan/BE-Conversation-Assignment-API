@@ -145,10 +145,12 @@ describe('assignment history (real app, real MongoDB, real Kafka)', () => {
     const agent = await createAgent('Ada');
     const id = await createConversation();
 
-    const response = await assign(id, agent);
-    const assignedAt = (await json<{ assignedAt: string }>(response)).assignedAt;
+    expect((await assign(id, agent)).status).toBe(200);
 
     const [entry] = await lines(id, 1);
+    const assignedAt = (
+      await json<{ assignedAt: string }>(await send('GET', `/conversations/${id}`))
+    ).assignedAt;
     expect(entry).toEqual({
       id: expect.stringMatching(/^[0-9a-f]{24}$/),
       conversationId: id,

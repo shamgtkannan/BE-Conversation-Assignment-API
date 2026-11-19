@@ -1,16 +1,23 @@
 /**
  * End-to-end integration test for PATCH and DELETE /conversations/:id/assignment:
- * the real AppModule against a real MongoDB. Run with `npx nx integration api`.
- * It only touches a database whose name ends in `_test` and drops it afterwards.
+ * the real AppModule against a real MongoDB and a real Kafka. Run with
+ * `npx nx integration api`. It only touches a database whose name ends in `_test` and
+ * drops it afterwards.
  *
- * The controller specs cover each HTTP case with fake use cases; this file proves
- * the whole chain: roles, the agents lookup, the domain rules, and what is
+ * These calls ask for a change and answer `200` at once; the request consumer makes the
+ * change a moment later. So what is checked before sending (role, ids, body, the
+ * conversation and the agent existing, a closed conversation) is answered by the call
+ * itself, and everything about the change waits for it with `eventually`.
+ *
+ * The controller specs cover each HTTP case with fake use cases; this file proves the
+ * whole chain: the checks, the request on Kafka, the change in MongoDB, and what is
  * actually stored (assignment fields absent, never null, after an unassign).
  */
 import { INestApplication } from '@nestjs/common';
 import { getConnectionToken } from '@nestjs/mongoose';
 import { Test } from '@nestjs/testing';
 import { AddressInfo } from 'net';
+import { AssignmentRequestConsumer } from '../modules/conversations/assignment-request.consumer';
 import * as mongoose from 'mongoose';
 import { AppModule } from './app.module';
 import { createValidationPipe } from './validation-pipe';
@@ -23,8 +30,7 @@ const dbName = (process.env['MONGODB_TEST_DATABASE'] ?? 'assignment_test').repla
 );
 
 // Point the app at the test database before the module reads its config.
-process.env['MONGODB_HOSTS'] =
-  process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
+process.env['MONGODB_HOSTS'] = process.env['MONGODB_TEST_HOSTS'] ?? 'localhost:27017';
 process.env['MONGODB_REPLICA_SET'] = process.env['MONGODB_TEST_REPLICA_SET'] ?? 'mongodb-test';
 process.env['MONGODB_DATABASE'] = dbName;
 
@@ -46,10 +52,20 @@ interface ConversationJson {
   updatedAt: string;
 }
 
-/** Lets the clock move on, so "unchanged" and "changed" timestamps differ. */
-const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+/** Retries `check` until it stops throwing: the change is made a moment after the request. */
+const eventually = async <T>(check: () => Promise<T>, timeoutMs = 20000): Promise<T> => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await check();
+    } catch (error) {
+      if (Date.now() > deadline) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+};
 
-describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB)', () => {
+describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB, real Kafka)', () => {
   let app: INestApplication;
   let baseUrl: string;
   let connection: mongoose.Connection;
@@ -102,6 +118,8 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     await app.listen(0);
     baseUrl = `http://127.0.0.1:${(app.getHttpServer().address() as AddressInfo).port}`;
     connection = app.get<mongoose.Connection>(getConnectionToken());
+    // Requests are read from the moment the consumer joins, so wait for it before sending any.
+    await app.get(AssignmentRequestConsumer).ready;
   });
 
   beforeEach(async () => {
@@ -114,83 +132,116 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     await app.close();
   });
 
+  /** Waits until the stored conversation satisfies `check`. */
+  const waitForStored = (
+    id: string,
+    check: (document: Record<string, unknown> | null) => boolean,
+  ) =>
+    eventually(async () => {
+      const document = (await stored(id)) as Record<string, unknown> | null;
+      if (!check(document)) throw new Error('the change has not been made yet');
+      return document;
+    });
+  const waitForAgent = (id: string, agentId: string | null) =>
+    waitForStored(id, (document) => (document?.['assignedAgentId'] ?? null) === agentId);
+  /** Asks for an assignment, expects it to be accepted, and waits for it to be made. */
+  const assignAndWait = async (
+    id: string,
+    agentId: string,
+    requestHeaders: Record<string, string> = headers(),
+  ) => {
+    expect((await assign(id, { agentId }, requestHeaders)).status).toBe(200);
+    return waitForAgent(id, agentId);
+  };
+  const unassignAndWait = async (
+    id: string,
+    requestHeaders: Record<string, string> = headers(),
+  ) => {
+    expect((await unassign(id, requestHeaders)).status).toBe(200);
+    return waitForAgent(id, null);
+  };
+
   describe('PATCH /conversations/:id/assignment', () => {
-    it('assigns an agent, recording who did it, and stores it', async () => {
+    it('answers that the request was sent, and the conversation is assigned a moment later, recording who asked', async () => {
       const agent = await createAgent('Ada');
       const id = await createConversation();
 
       const response = await assign(id, { agentId: agent });
-      const body = (await response.json()) as ConversationJson;
+      const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body).toMatchObject({
+      expect(body).toEqual({ commandId: expect.any(String), status: 'requested' });
+      const document = await waitForAgent(id, agent);
+      expect(document).toMatchObject({ assignedBy: 'user_manager' });
+      expect(document?.['assignedAt']).toBeInstanceOf(Date);
+      expect(await read(id)).toMatchObject({
         id,
         status: 'open',
         workspaceId: 'workspace_1',
         assignedAgentId: agent,
         assignedBy: 'user_manager',
       });
-      expect(new Date(body.assignedAt as string).toISOString()).toBe(body.assignedAt);
-      expect(await stored(id)).toMatchObject({
-        assignedAgentId: agent,
-        assignedBy: 'user_manager',
-        assignedAt: new Date(body.assignedAt as string),
-      });
-      expect(await read(id)).toEqual(body);
+    });
+
+    it('names each request differently', async () => {
+      const agent = await createAgent('Ada');
+      const id = await createConversation();
+
+      const first = (await (await assign(id, { agentId: agent })).json()) as { commandId: string };
+      const second = (await (await assign(id, { agentId: agent })).json()) as { commandId: string };
+
+      expect(first.commandId).not.toBe(second.commandId);
     });
 
     it('lets an admin assign too, and records the admin', async () => {
       const agent = await createAgent('Ada');
       const id = await createConversation();
 
-      const response = await assign(id, { agentId: agent }, headers('workspace_1', 'admin', 'user_admin'));
+      const document = await assignAndWait(
+        id,
+        agent,
+        headers('workspace_1', 'admin', 'user_admin'),
+      );
 
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ assignedBy: 'user_admin' });
+      expect(document).toMatchObject({ assignedBy: 'user_admin' });
     });
 
     it('replaces the previous agent on reassignment', async () => {
       const ada = await createAgent('Ada');
       const bob = await createAgent('Bob');
       const id = await createConversation();
-      await assign(id, { agentId: ada });
-      await tick();
+      await assignAndWait(id, ada);
 
-      const response = await assign(id, { agentId: bob }, headers('workspace_1', 'admin', 'user_admin'));
-      const body = (await response.json()) as ConversationJson;
+      const document = await assignAndWait(id, bob, headers('workspace_1', 'admin', 'user_admin'));
 
-      expect(response.status).toBe(200);
-      expect(body).toMatchObject({ assignedAgentId: bob, assignedBy: 'user_admin' });
-      expect(await stored(id)).toMatchObject({ assignedAgentId: bob, assignedBy: 'user_admin' });
+      expect(document).toMatchObject({ assignedAgentId: bob, assignedBy: 'user_admin' });
     });
 
-    it('changes nothing when the same agent is assigned twice', async () => {
-      const agent = await createAgent('Ada');
+    it('changes nothing when the same agent is asked for twice', async () => {
+      const [ada, bob] = [await createAgent('Ada'), await createAgent('Bob')];
       const id = await createConversation();
-      const first = (await (await assign(id, { agentId: agent })).json()) as ConversationJson;
-      const before = await stored(id);
-      await tick();
+      await assignAndWait(id, ada);
 
-      const again = await assign(id, { agentId: agent }, headers('workspace_1', 'admin', 'user_admin'));
+      await assign(id, { agentId: ada }, headers('workspace_1', 'admin', 'user_admin'));
+      const document = await assignAndWait(id, bob); // behind it: once this shows, the repeat was handled
 
-      expect(again.status).toBe(200);
-      expect(await again.json()).toEqual(first);
-      expect(await stored(id)).toEqual(before);
+      // assign ada = version 1, the repeat changed nothing, assign bob = version 2.
+      expect(document).toMatchObject({ version: 2 });
     });
 
     it('makes the conversation show up under the assignedAgentId filter', async () => {
       const agent = await createAgent('Ada');
       const assigned = await createConversation();
       await createConversation();
-      await assign(assigned, { agentId: agent });
+      await assignAndWait(assigned, agent);
 
       const list = await fetch(`${baseUrl}/conversations?assignedAgentId=${agent}`, {
         headers: headers(),
       });
 
-      expect(((await list.json()) as { items: ConversationJson[] }).items.map((c) => c.id)).toEqual([
-        assigned,
-      ]);
+      expect(((await list.json()) as { items: ConversationJson[] }).items.map((c) => c.id)).toEqual(
+        [assigned],
+      );
     });
 
     describe('403 Forbidden', () => {
@@ -215,7 +266,7 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
         expect(await stored(id)).not.toHaveProperty('assignedAgentId');
       });
 
-      it("rejects an agent of another workspace as if it did not exist", async () => {
+      it('rejects an agent of another workspace as if it did not exist', async () => {
         const foreign = await createAgent('Eve', 'workspace_2');
         const id = await createConversation();
 
@@ -261,7 +312,7 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
         const ada = await createAgent('Ada');
         const bob = await createAgent('Bob');
         const id = await createConversation();
-        await assign(id, { agentId: ada });
+        await assignAndWait(id, ada);
         await connection
           .collection('conversations')
           .updateOne({ _id: new mongoose.Types.ObjectId(id) }, { $set: { status: 'closed' } });
@@ -301,7 +352,11 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     it('answers 401 without auth headers', async () => {
       const id = await createConversation();
 
-      const response = await assign(id, { agentId: 'a'.repeat(24) }, { 'content-type': 'application/json' });
+      const response = await assign(
+        id,
+        { agentId: 'a'.repeat(24) },
+        { 'content-type': 'application/json' },
+      );
 
       expect(response.status).toBe(401);
     });
@@ -312,35 +367,33 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     const assigned = async () => {
       const agent = await createAgent('Ada');
       const id = await createConversation();
-      await assign(id, { agentId: agent });
-      await tick();
+      await assignAndWait(id, agent);
       return { id, agent };
     };
 
-    it('clears the assignment: nulls in the response, absent fields in the database', async () => {
+    it('answers that the request was sent, and the assignment is cleared a moment later: absent fields in the database', async () => {
       const { id } = await assigned();
 
       const response = await unassign(id);
-      const body = (await response.json()) as ConversationJson;
+      const body = await response.json();
 
       expect(response.status).toBe(200);
-      expect(body).toMatchObject({
+      expect(body).toEqual({ commandId: expect.any(String), status: 'requested' });
+      const document = await waitForAgent(id, null);
+      expect(document).not.toHaveProperty('assignedAgentId');
+      expect(document).not.toHaveProperty('assignedAt');
+      expect(document).not.toHaveProperty('assignedBy');
+      expect(await read(id)).toMatchObject({
         id,
         assignedAgentId: null,
         assignedAt: null,
         assignedBy: null,
       });
-      expect(Date.parse(body.updatedAt)).toBeGreaterThan(Date.parse(body.createdAt));
-      const document = await stored(id);
-      expect(document).not.toHaveProperty('assignedAgentId');
-      expect(document).not.toHaveProperty('assignedAt');
-      expect(document).not.toHaveProperty('assignedBy');
-      expect(await read(id)).toEqual(body);
     });
 
     it('removes the conversation from the assignedAgentId filter', async () => {
       const { id, agent } = await assigned();
-      await unassign(id);
+      await unassignAndWait(id);
 
       const list = await fetch(`${baseUrl}/conversations?assignedAgentId=${agent}`, {
         headers: headers(),
@@ -352,29 +405,30 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     it('lets an admin unassign', async () => {
       const { id } = await assigned();
 
-      expect((await unassign(id, headers('workspace_1', 'admin', 'user_admin'))).status).toBe(200);
+      await unassignAndWait(id, headers('workspace_1', 'admin', 'user_admin'));
     });
 
-    it('answers 200 and changes nothing when unassigned twice', async () => {
+    it('changes nothing when asked for twice', async () => {
       const { id } = await assigned();
-      const first = await (await unassign(id)).json();
-      const before = await stored(id);
-      await tick();
+      await unassignAndWait(id);
+      const bob = await createAgent('Bob');
 
-      const again = await unassign(id);
+      await unassign(id);
+      const document = await assignAndWait(id, bob); // behind it: once this shows, the repeat was handled
 
-      expect(again.status).toBe(200);
-      expect(await again.json()).toEqual(first);
-      expect(await stored(id)).toEqual(before);
+      // assign = version 1, unassign = 2, the repeat changed nothing, assign bob = 3.
+      expect(document).toMatchObject({ version: 3 });
     });
 
-    it('answers 200 for a conversation that was never assigned', async () => {
+    it('answers 200 for a conversation that was never assigned, and changes nothing', async () => {
       const id = await createConversation();
+      const agent = await createAgent('Ada');
 
       const response = await unassign(id);
+      const document = await assignAndWait(id, agent); // behind it
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ assignedAgentId: null });
+      expect(document).toMatchObject({ version: 1 });
     });
 
     it('can unassign a conversation that was closed after it was assigned', async () => {
@@ -386,18 +440,17 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
       const response = await unassign(id);
 
       expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ status: 'closed', assignedAgentId: null });
+      expect(await waitForAgent(id, null)).toMatchObject({ status: 'closed' });
     });
 
     it('allows a new assignment after an unassign', async () => {
       const { id } = await assigned();
-      await unassign(id);
+      await unassignAndWait(id);
       const bob = await createAgent('Bob');
 
-      const response = await assign(id, { agentId: bob }, headers('workspace_1', 'manager', 'user_2'));
+      const document = await assignAndWait(id, bob, headers('workspace_1', 'manager', 'user_2'));
 
-      expect(response.status).toBe(200);
-      expect(await response.json()).toMatchObject({ assignedAgentId: bob, assignedBy: 'user_2' });
+      expect(document).toMatchObject({ assignedAgentId: bob, assignedBy: 'user_2' });
     });
 
     it('rejects the agent role with 403 and keeps the assignment', async () => {
@@ -439,58 +492,56 @@ describe('PATCH and DELETE /conversations/:id/assignment (real app, real MongoDB
     const agents = (count: number) =>
       Promise.all(Array.from({ length: count }, (_, n) => createAgent(`Racer${n}`)));
 
-    it('answers only 200 or 409 and keeps the count of changes equal to the 200s', async () => {
+    it('accepts every one, and applies them one at a time, so no change is lost', async () => {
       const id = await createConversation();
       const racers = await agents(10);
 
       const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
-      const statuses = responses.map((response) => response.status);
-      const winners = await Promise.all(
-        responses.filter((response) => response.status === 200).map((r) => r.json() as Promise<ConversationJson>),
-      );
 
-      expect(statuses.every((status) => status === 200 || status === 409)).toBe(true);
-      expect(winners.length).toBeGreaterThanOrEqual(1);
-      expect(await stored(id)).toMatchObject({ version: winners.length });
-      const final = await read(id);
-      expect(winners.map((winner) => winner.assignedAgentId)).toContain(final.assignedAgentId);
+      expect(responses.every((response) => response.status === 200)).toBe(true);
+      // Ten different agents asked for in turn: each is a real change, so ten versions.
+      const document = await waitForStored(id, (doc) => doc?.['version'] === 10);
+      expect(racers).toContain(document?.['assignedAgentId']);
+      expect((await stored(id))?.['version']).toBe(10);
     });
 
-    it('lets a rejected request succeed when it is sent again', async () => {
+    it('keeps an unbroken chain in the history: each line starts from the agent the one before ended with', async () => {
       const id = await createConversation();
       const racers = await agents(10);
-      const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
-      const rejected = racers.find((_, n) => responses[n].status === 409);
-      if (rejected === undefined) return; // every request got its turn: nothing to retry
+      await Promise.all(racers.map((agentId) => assign(id, { agentId })));
 
-      const retry = await assign(id, { agentId: rejected });
+      const lines = await eventually(async () => {
+        const page = (await (
+          await fetch(`${baseUrl}/conversations/${id}/assignment-history?limit=100`, {
+            headers: headers(),
+          })
+        ).json()) as { items: { previousAgentId: string | null; newAgentId: string }[] };
+        if (page.items.length !== 10) throw new Error(`${page.items.length}/10 lines`);
+        return page.items;
+      });
 
-      expect(retry.status).toBe(200);
-      expect(((await retry.json()) as ConversationJson).assignedAgentId).toBe(rejected);
+      // Newest first: each line's previous agent is the next line's new agent, and the first had none.
+      lines
+        .slice(0, -1)
+        .forEach((line, n) => expect(line.previousAgentId).toBe(lines[n + 1].newAgentId));
+      expect(lines[lines.length - 1].previousAgentId).toBeNull();
+      expect(new Set(lines.map((line) => line.newAgentId)).size).toBe(10);
     });
 
-    it('answers a body that says what went wrong when a request loses', async () => {
+    it('lets simultaneous removals through, clearing the assignment once and never half of it', async () => {
       const id = await createConversation();
-      const racers = await agents(10);
-      const responses = await Promise.all(racers.map((agentId) => assign(id, { agentId })));
-      const loser = responses.find((response) => response.status === 409);
-      if (!loser) return; // every request got its turn
-
-      expect(await loser.json()).toMatchObject({ statusCode: 409, error: 'Conflict' });
-    });
-
-    it('lets simultaneous removals through without leaving a half-cleared assignment', async () => {
-      const id = await createConversation();
-      await assign(id, { agentId: (await agents(1))[0] });
+      const [agent, other] = await agents(2);
+      await assignAndWait(id, agent);
 
       const responses = await Promise.all(Array.from({ length: 5 }, () => unassign(id)));
+      const document = await waitForAgent(id, null);
+      const after = await assignAndWait(id, other); // behind them: once it shows, every removal was handled
 
-      expect(responses.every((response) => response.status === 200 || response.status === 409)).toBe(true);
-      expect(responses.some((response) => response.status === 200)).toBe(true);
-      const document = await stored(id);
-      expect(document).not.toHaveProperty('assignedAgentId');
+      expect(responses.every((response) => response.status === 200)).toBe(true);
       expect(document).not.toHaveProperty('assignedAt');
       expect(document).not.toHaveProperty('assignedBy');
+      // assign = 1, one removal = 2, the other four changed nothing, assign again = 3.
+      expect(after).toMatchObject({ version: 3 });
     });
   });
 });

@@ -169,14 +169,14 @@ describe('assignment events on Kafka (real app, real MongoDB, real Kafka)', () =
     const id = await createConversation();
 
     const response = await assign(id, agent);
-    const body = await json<ConversationJson>(response);
 
     expect(response.status).toBe(200);
     const [message] = await read(ASSIGNED, id, 1);
+    const conversation = await json<ConversationJson>(await send('GET', `/conversations/${id}`));
     expect(message.value).toEqual({
       type: ASSIGNED,
       eventId: expect.any(String),
-      occurredAt: body.assignedAt,
+      occurredAt: conversation.assignedAt,
       workspaceId: 'workspace_1',
       conversationId: id,
       previousAgentId: null,
@@ -259,6 +259,7 @@ describe('assignment events on Kafka (real app, real MongoDB, real Kafka)', () =
       const agent = await createAgent('Ada');
       const id = await createConversation();
       await assign(id, agent);
+      await read(ASSIGNED, id, 1);
       const before = await published();
 
       expect((await assign(id, agent)).status).toBe(200);
@@ -313,7 +314,7 @@ describe('assignment events on Kafka (real app, real MongoDB, real Kafka)', () =
     });
   });
 
-  it('publishes exactly one event per successful change when ten requests race', async () => {
+  it('publishes exactly one event per change when ten requests are made at once, in the order they were applied', async () => {
     const agents = await Promise.all(
       Array.from({ length: 10 }, (_, n) => createAgent(`Racer${n}`)),
     );
@@ -324,14 +325,14 @@ describe('assignment events on Kafka (real app, real MongoDB, real Kafka)', () =
       (r) => r.status,
     );
 
-    const succeeded = statuses.filter((status) => status === 200).length;
-    expect(statuses.every((status) => status === 200 || status === 409)).toBe(true);
+    // Every request is accepted and applied in turn: ten different agents, ten changes, ten events.
+    expect(statuses.every((status) => status === 200)).toBe(true);
+    const events = await read(ASSIGNED, id, 10);
     await settle();
-    expect(await published()).toBe(before + succeeded + 1);
-    const events = await read(ASSIGNED, id, succeeded);
-    expect(events.map((event) => event.value['version']).sort()).toEqual(
-      Array.from({ length: succeeded }, (_, n) => n + 1),
-    );
+    expect(await published()).toBe(before + 10 + 1);
+    expect(
+      events.map((event) => event.value['version']).sort((a, b) => Number(a) - Number(b)),
+    ).toEqual(Array.from({ length: 10 }, (_, n) => n + 1));
   });
 
   describe('KafkaProducerService when Kafka is not there', () => {

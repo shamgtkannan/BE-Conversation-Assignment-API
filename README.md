@@ -249,6 +249,36 @@ docker exec assignment-mongo mongosh --quiet assignment \
   --eval 'db.conversations.find().toArray()'
 ```
 
+### Assignment history
+
+`GET /conversations/:id/assignment-history` lists who assigned which agent to the conversation and when, newest first. Any authenticated role may read it. It takes the same `limit`, `next` and `previous` paging parameters as the other lists and answers the same page shape:
+
+```json
+{
+  "items": [
+    {
+      "id": "6650...",
+      "conversationId": "65f1a2b3c4d5e6f708091a2b",
+      "action": "assigned",
+      "previousAgentId": "65f1a2b3c4d5e6f708091a2c",
+      "newAgentId": "65f1a2b3c4d5e6f708091a2d",
+      "performedBy": "user_123",
+      "occurredAt": "2026-11-13T08:30:00.000Z",
+      "version": 2
+    }
+  ],
+  "hasNext": false,
+  "next": null,
+  "hasPrevious": false,
+  "previous": null
+}
+```
+
+- `action` is `assigned` (a new agent, or a replacement) or `unassigned` (the agent was removed). `previousAgentId` and `newAgentId` are `null` when there was no agent before, or none after.
+- `version` is the conversation's version after the change, so the lines of one conversation can be ordered exactly.
+- `400` for a malformed id or bad paging values, `404` when the conversation is not in the caller's workspace (so another workspace's history is never readable), `401` without auth.
+- **The history is eventually consistent.** A line is written by a Kafka consumer after the assignment was saved, so it appears a moment after the `PATCH` or `DELETE` answered (usually well under a second). Assignments that changed nothing, and requests that failed, leave no line.
+
 ## Testing
 
 ```sh
@@ -292,19 +322,19 @@ packages/
     application/               use cases, AgentRepository port, in-memory test double
     infra/                     Mongoose schema, repository, id generator
   conversations/
-    domain/                    Conversation (create, assign, unassign, restore, version), conversation events, domain errors
-    application/               use cases, ConversationRepository, AgentLookup and EventPublisher ports, test doubles
-    infra/                     Mongoose schema, indexes, repository, id generator
+    domain/                    Conversation (create, assign, unassign, restore, version), conversation events, assignment history line, domain errors
+    application/               use cases, ConversationRepository, AgentLookup, EventPublisher and AssignmentHistoryRepository ports, test doubles
+    infra/                     Mongoose schemas, indexes, repositories, id generator, Kafka event publisher and decoder
 apps/
   api/src/
     auth/                      mock AuthGuard, @CurrentAuth()
-    common/                    DomainExceptionFilter, MongoModule, SystemClock, NoopEventPublisher
+    common/                    DomainExceptionFilter, MongoModule, KafkaModule, KafkaProducerService, SystemClock
     modules/agents/            controller, DTOs, response mapping, Nest module
-    modules/conversations/     controller, DTOs, response mapping, Nest module, agent-lookup adapter
+    modules/conversations/     controllers, DTOs, response mapping, Nest module, agent-lookup adapter, assignment-history consumer
 ```
 
 - **Domain** holds the entities and business rules and imports no framework or database. `Conversation` is immutable: `assign` and `unassign` return a new conversation, or the same instance when nothing changes.
-- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AgentLookup`, `EventPublisher`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP.
+- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AssignmentHistoryRepository`, `AgentLookup`, `EventPublisher`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP.
 - **Infra** implements the ports with Mongoose: schemas, mappers between documents and entities, and indexes.
 - **apps/api** is the presentation layer and composition root. Controllers only validate input, take the caller from `@CurrentAuth()` and delegate. Modules build the use cases with `useFactory` and bind ports to adapters through Symbol tokens. The `DomainExceptionFilter` turns domain errors into HTTP statuses in one place, so controllers never catch.
 - **Contexts stay separate.** Conversations must know whether an agent exists, so it owns an `AgentLookup` port. `AgentsBackedAgentLookup` in `apps/api` implements it by calling the agents `GetAgentUseCase`. The two contexts never import each other.
@@ -335,10 +365,10 @@ MongoDB indexes, declared on the schemas:
 - **Where the assignment and a convention disagree**, the assignment wins, for example `403` for a forbidden role and `409` for a duplicate email.
 - **Unassigning a closed conversation is allowed.** The assignment freezes only assigning and reassigning.
 - **Concurrency (bonus 3) uses a version number.** Every conversation stores a `version` that goes up by one with each assignment change. Saving a change is one atomic MongoDB update that matches the id, the workspace and the version that was read, so of several simultaneous requests exactly one is written and the rest fail with `409` (nothing is written for them). A time stamp would not do, because two changes can share a millisecond. The version is internal and not part of the API response; documents stored before it existed count as version 0. Requests that were not in step with each other can all succeed one after another, which is correct: the version equals the number of successful changes.
+- **The history is recorded from the events, not by the request.** A Kafka consumer inside the API (group `conversation-history`) reads `conversation.assigned.v1` and `conversation.unassigned.v1` and writes one line per event to the `assignment_history` collection. Each event has a unique id and the collection has a unique index on it, so an event that Kafka delivers more than once is recorded once. A message that is not a valid event is logged and skipped instead of blocking the ones behind it; a failure to write is retried by Kafka. A new group reads the topics from the beginning, so events published before the consumer first ran are not missed. The consumer starts in the background, so the API still starts while Kafka is down and the consumer connects when it can. Lines are ordered by the time of the change, with the id as tiebreaker.
 - **Events are built by the use cases.** After a real assignment change the use case publishes `conversation.assigned.v1` (or `conversation.unassigned.v1`) through the `EventPublisher` port, once, after the save. `KafkaEventPublisher` implements the port: the topic is the event type, the message key is the conversation id (so one conversation's events stay in one partition, in order), and the value is the event as JSON. The producer is idempotent and waits for all in-sync replicas (`acks=-1`). Topics are created on first use (3 partitions). **Known gap:** the event is published right after the database save, so a crash between the two, or Kafka being down, loses the event, and a failed publish makes the request answer `500` although the assignment was saved. Closing that gap is the next part of the bonus work (see below).
 
 ## Not implemented
 
-- **Bonus 1, assignment history.** No audit trail is kept.
 - **Bonus 2, Kafka event (partly).** `conversation.assigned.v1` is published to Kafka after a successful assignment, but not yet in a way that survives every failure (see the known gap above). To avoid losing the event when the database write succeeds but publishing fails, I would use the transactional outbox pattern: write the event to an `outbox` collection in the same transaction as the assignment, and let a separate relay publish it and mark it sent. Publishing is then at least once, so consumers must tolerate duplicates.
 - **Real authentication.** Only the mock header guard exists.

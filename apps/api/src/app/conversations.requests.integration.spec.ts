@@ -251,14 +251,34 @@ describe('assignment requests (real app, real MongoDB, real Kafka)', () => {
   });
 
   describe('a request that is refused changes nothing, and the requests behind it still run', () => {
+    // The use case refuses these before publishing, so they are published by hand: that is what
+    // a request looks like when the data changed after the checks (a race).
+    const rawAssign = (conversationId: string, agentId: string) => ({
+      type: REQUESTED,
+      commandId: randomUUID(),
+      requestedAt: new Date().toISOString(),
+      workspaceId: 'workspace_1',
+      conversationId,
+      action: 'assign',
+      agentId,
+      requestedBy: 'user_manager',
+      role: 'manager',
+    });
+
     it('for a closed conversation, an unknown conversation and an unknown agent', async () => {
       const agent = await createAgent('Ada');
       const open = await createConversation();
       const closed = await createConversation('closed');
 
-      await requestAssign(closed, agent);
-      await requestAssign(new mongoose.Types.ObjectId().toHexString(), agent);
-      await requestAssign(open, new mongoose.Types.ObjectId().toHexString());
+      await producer.send({
+        topic: REQUESTED,
+        acks: -1,
+        messages: [
+          rawAssign(closed, agent),
+          rawAssign(new mongoose.Types.ObjectId().toHexString(), agent),
+          rawAssign(open, new mongoose.Types.ObjectId().toHexString()),
+        ].map((value) => ({ key: value.conversationId, value: JSON.stringify(value) })),
+      });
       await requestAssign(open, agent); // behind the refused ones
 
       await waitForAgent(open, agent);
@@ -321,6 +341,30 @@ describe('assignment requests (real app, real MongoDB, real Kafka)', () => {
   });
 
   describe('RequestAssignmentUseCase', () => {
+    it('refuses what cannot succeed before publishing: a closed conversation, an unknown conversation, an unknown agent', async () => {
+      const agent = await createAgent('Ada');
+      const open = await createConversation();
+      const closed = await createConversation('closed');
+
+      await expect(requestAssign(closed, agent)).rejects.toMatchObject({
+        name: 'ConversationClosedError',
+      });
+      await expect(
+        requestAssign(new mongoose.Types.ObjectId().toHexString(), agent),
+      ).rejects.toMatchObject({
+        name: 'ConversationNotFoundError',
+      });
+      await expect(
+        requestAssign(open, new mongoose.Types.ObjectId().toHexString()),
+      ).rejects.toMatchObject({
+        name: 'AssignedAgentNotFoundError',
+      });
+
+      await requestAssign(open, agent); // a valid one: the refused ones left nothing in front of it
+      await waitForAgent(open, agent);
+      expect(await historyOf(open)).toHaveLength(1);
+    });
+
     it('refuses a role that may not ask, and sends nothing', async () => {
       const agent = await createAgent('Ada');
       const id = await createConversation();

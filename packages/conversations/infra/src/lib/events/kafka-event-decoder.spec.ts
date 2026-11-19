@@ -1,9 +1,4 @@
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationAssigned,
-  ConversationUnassigned,
-} from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1, ConversationAssigned } from 'conversations-domain';
 import { InvalidEventMessageError, decodeConversationEvent } from './kafka-event-decoder';
 
 const assigned: ConversationAssigned = {
@@ -16,17 +11,6 @@ const assigned: ConversationAssigned = {
   agentId: '65f1a2b3c4d5e6f708091a2c',
   assignedBy: 'user_1',
   version: 1,
-};
-
-const unassigned: ConversationUnassigned = {
-  type: CONVERSATION_UNASSIGNED_V1,
-  eventId: 'event_2',
-  occurredAt: new Date('2026-11-13T10:00:00.000Z'),
-  workspaceId: 'workspace_1',
-  conversationId: '65f1a2b3c4d5e6f708091a2b',
-  previousAgentId: '65f1a2b3c4d5e6f708091a2c',
-  unassignedBy: 'user_2',
-  version: 2,
 };
 
 const wire = (event: object) => JSON.stringify(event);
@@ -49,10 +33,6 @@ describe('decodeConversationEvent', () => {
     expect(decodeConversationEvent(wire(reassigned))).toEqual(reassigned);
   });
 
-  it('reads back an unassigned event', () => {
-    expect(decodeConversationEvent(wire(unassigned))).toEqual(unassigned);
-  });
-
   it('ignores fields it does not know, so a newer producer does not break an older consumer', () => {
     const decoded = decodeConversationEvent(wire({ ...assigned, somethingNew: 'x' }));
 
@@ -72,16 +52,24 @@ describe('decodeConversationEvent', () => {
       ['a JSON string', '"hello"'],
       ['an object without a type', wire({ ...assigned, type: undefined })],
       ['an unknown event type', wire({ ...assigned, type: 'conversation.closed.v1' })],
+      [
+        'an unassigned event, which is no longer produced',
+        wire({
+          type: 'conversation.unassigned.v1',
+          eventId: 'event_2',
+          occurredAt: '2026-11-13T10:00:00.000Z',
+          workspaceId: 'workspace_1',
+          conversationId: '65f1a2b3c4d5e6f708091a2b',
+          previousAgentId: '65f1a2b3c4d5e6f708091a2c',
+          unassignedBy: 'user_2',
+          version: 2,
+        }),
+      ],
     ])('%s', (_label, value) => rejects(value));
 
     it.each(['eventId', 'occurredAt', 'workspaceId', 'conversationId', 'agentId', 'assignedBy', 'version'])(
       'an assigned event without %s',
       (field) => rejects(wire({ ...assigned, [field]: undefined })),
-    );
-
-    it.each(['eventId', 'occurredAt', 'workspaceId', 'conversationId', 'previousAgentId', 'unassignedBy', 'version'])(
-      'an unassigned event without %s',
-      (field) => rejects(wire({ ...unassigned, [field]: undefined })),
     );
 
     it.each([
@@ -97,9 +85,6 @@ describe('decodeConversationEvent', () => {
       ['a previous agent that is a number', { previousAgentId: 7 }],
     ])('an assigned event with %s', (_label, overrides) => rejects(wire({ ...assigned, ...overrides })));
 
-    it('an unassigned event whose previous agent is null, because it must name who was removed', () => {
-      rejects(wire({ ...unassigned, previousAgentId: null }));
-    });
   });
 
   it('says why a message was rejected', () => {

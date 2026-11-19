@@ -1,9 +1,4 @@
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationAssigned,
-  ConversationUnassigned,
-} from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1, ConversationAssigned } from 'conversations-domain';
 import { RecordAssignmentHistoryUseCase } from './record-assignment-history.use-case';
 import { InMemoryAssignmentHistoryRepository } from './testing/in-memory-assignment-history.repository';
 
@@ -19,18 +14,6 @@ const assigned = (overrides: Partial<ConversationAssigned> = {}): ConversationAs
   agentId: 'agent_a',
   assignedBy: 'user_1',
   version: 1,
-  ...overrides,
-});
-
-const unassigned = (overrides: Partial<ConversationUnassigned> = {}): ConversationUnassigned => ({
-  type: CONVERSATION_UNASSIGNED_V1,
-  eventId: 'event_2',
-  occurredAt: at,
-  workspaceId: 'workspace_1',
-  conversationId: 'conversation_1',
-  previousAgentId: 'agent_a',
-  unassignedBy: 'user_2',
-  version: 2,
   ...overrides,
 });
 
@@ -71,17 +54,6 @@ describe('RecordAssignmentHistoryUseCase', () => {
     });
   });
 
-  it('records an unassigned event with the removed agent and the user who removed it', async () => {
-    await useCase.execute(unassigned());
-
-    expect(repository.lines[0]).toMatchObject({
-      action: 'unassigned',
-      previousAgentId: 'agent_a',
-      performedBy: 'user_2',
-    });
-    expect(repository.lines[0]).not.toHaveProperty('newAgentId');
-  });
-
   it('answers true when it recorded the event', async () => {
     await expect(useCase.execute(assigned())).resolves.toBe(true);
   });
@@ -96,9 +68,9 @@ describe('RecordAssignmentHistoryUseCase', () => {
 
   it('records different events of the same conversation as different lines', async () => {
     await useCase.execute(assigned());
-    await useCase.execute(unassigned());
+    await useCase.execute(assigned({ eventId: 'event_2', previousAgentId: 'agent_a', version: 2 }));
 
-    expect(repository.lines.map((line) => line.action)).toEqual(['assigned', 'unassigned']);
+    expect(repository.lines.map((line) => line.version)).toEqual([1, 2]);
   });
 
   it('passes a storage failure on, so the event is delivered again later', async () => {

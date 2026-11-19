@@ -1,9 +1,4 @@
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationAssigned,
-  ConversationUnassigned,
-} from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1, ConversationAssigned } from 'conversations-domain';
 import { AssignmentHistoryMessageHandler } from './assignment-history.message-handler';
 
 const assigned: ConversationAssigned = {
@@ -16,17 +11,6 @@ const assigned: ConversationAssigned = {
   agentId: '65f1a2b3c4d5e6f708091a2c',
   assignedBy: 'user_1',
   version: 1,
-};
-
-const unassigned: ConversationUnassigned = {
-  type: CONVERSATION_UNASSIGNED_V1,
-  eventId: 'event_2',
-  occurredAt: new Date('2026-11-13T10:00:00.000Z'),
-  workspaceId: 'workspace_1',
-  conversationId: '65f1a2b3c4d5e6f708091a2b',
-  previousAgentId: '65f1a2b3c4d5e6f708091a2c',
-  unassignedBy: 'user_2',
-  version: 2,
 };
 
 const message = (value: unknown) => Buffer.from(typeof value === 'string' ? value : JSON.stringify(value));
@@ -47,12 +31,6 @@ describe('AssignmentHistoryMessageHandler', () => {
     expect(execute).toHaveBeenCalledWith(assigned);
   });
 
-  it('hands an unassigned event to the use case', async () => {
-    await handler.handle(message(unassigned));
-
-    expect(execute).toHaveBeenCalledWith(unassigned);
-  });
-
   it('is fine when the event was already recorded (the use case answers false)', async () => {
     execute.mockResolvedValue(false);
 
@@ -64,6 +42,19 @@ describe('AssignmentHistoryMessageHandler', () => {
       ['text that is not JSON', message('not json')],
       ['JSON that is not an event', message({ hello: 'world' })],
       ['an event of a type it does not know', message({ ...assigned, type: 'conversation.closed.v1' })],
+      [
+        'an unassigned event, which is no longer produced',
+        message({
+          type: 'conversation.unassigned.v1',
+          eventId: 'event_2',
+          occurredAt: '2026-11-13T10:00:00.000Z',
+          workspaceId: 'workspace_1',
+          conversationId: '65f1a2b3c4d5e6f708091a2b',
+          previousAgentId: '65f1a2b3c4d5e6f708091a2c',
+          unassignedBy: 'user_2',
+          version: 2,
+        }),
+      ],
       ['an event with a damaged field', message({ ...assigned, version: 'one' })],
       ['an empty message (a tombstone)', null],
     ])('%s', async (_label, value) => {

@@ -1,4 +1,4 @@
-import { CONVERSATION_ASSIGNED_V1, CONVERSATION_UNASSIGNED_V1 } from 'conversations-domain';
+import { CONVERSATION_ASSIGNED_V1 } from 'conversations-domain';
 import {
   AssignmentHistoryConsumer,
   HISTORY_CONSUMER_GROUP,
@@ -42,11 +42,11 @@ describe('AssignmentHistoryConsumer', () => {
     expect(consumerFactory).toHaveBeenCalledWith({ groupId: 'conversation-history' });
   });
 
-  it('subscribes to both event topics, from the beginning, so no event is missed before it first runs', async () => {
+  it('subscribes to the assigned-event topic, from the beginning, so no event is missed before it first runs', async () => {
     await history.start();
 
     expect(consumer.subscribe).toHaveBeenCalledWith({
-      topics: [CONVERSATION_ASSIGNED_V1, CONVERSATION_UNASSIGNED_V1],
+      topics: [CONVERSATION_ASSIGNED_V1],
       fromBeginning: true,
     });
   });

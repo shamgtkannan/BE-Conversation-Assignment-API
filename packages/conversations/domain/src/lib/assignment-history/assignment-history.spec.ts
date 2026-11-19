@@ -1,9 +1,4 @@
-import {
-  CONVERSATION_ASSIGNED_V1,
-  CONVERSATION_UNASSIGNED_V1,
-  ConversationAssigned,
-  ConversationUnassigned,
-} from '../events/conversation-events';
+import { CONVERSATION_ASSIGNED_V1, ConversationAssigned } from '../events/conversation-events';
 import { ASSIGNMENT_ACTIONS } from './assignment-history.entity';
 import { historyEntryFromEvent } from './assignment-history';
 
@@ -22,21 +17,9 @@ const assigned = (overrides: Partial<ConversationAssigned> = {}): ConversationAs
   ...overrides,
 });
 
-const unassigned = (overrides: Partial<ConversationUnassigned> = {}): ConversationUnassigned => ({
-  type: CONVERSATION_UNASSIGNED_V1,
-  eventId: 'event_2',
-  occurredAt,
-  workspaceId: 'workspace_1',
-  conversationId: 'conversation_1',
-  previousAgentId: 'agent_b',
-  unassignedBy: 'user_2',
-  version: 2,
-  ...overrides,
-});
-
 describe('assignment actions', () => {
-  it('are assigned and unassigned', () => {
-    expect([...ASSIGNMENT_ACTIONS]).toEqual(['assigned', 'unassigned']);
+  it('are only assigned: removing an agent is not recorded', () => {
+    expect([...ASSIGNMENT_ACTIONS]).toEqual(['assigned']);
   });
 });
 
@@ -65,25 +48,6 @@ describe('historyEntryFromEvent', () => {
       const entry = historyEntryFromEvent(assigned({ previousAgentId: 'agent_a', version: 2 }));
 
       expect(entry).toMatchObject({ previousAgentId: 'agent_a', newAgentId: 'agent_b', version: 2 });
-    });
-  });
-
-  describe('an unassigned event', () => {
-    it('becomes an "unassigned" line naming the removed agent and the user who removed it', () => {
-      expect(historyEntryFromEvent(unassigned())).toEqual({
-        eventId: 'event_2',
-        workspaceId: 'workspace_1',
-        conversationId: 'conversation_1',
-        action: 'unassigned',
-        previousAgentId: 'agent_b',
-        performedBy: 'user_2',
-        createdAt: occurredAt,
-        version: 2,
-      });
-    });
-
-    it('has no new agent (absent, not null)', () => {
-      expect(historyEntryFromEvent(unassigned())).not.toHaveProperty('newAgentId');
     });
   });
 

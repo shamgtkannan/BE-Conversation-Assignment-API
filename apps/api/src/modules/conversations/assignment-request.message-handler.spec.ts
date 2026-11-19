@@ -61,12 +61,11 @@ describe('AssignmentRequestMessageHandler', () => {
       expect(unassignUseCase.execute).not.toHaveBeenCalled();
     });
 
-    it('hands an unassign request to the unassign use case, as the user who asked', async () => {
+    it('hands an unassign request to the unassign use case', async () => {
       await handler.handle(message(unassign));
 
       expect(unassignUseCase.execute).toHaveBeenCalledWith({
         workspaceId: 'workspace_1',
-        userId: 'user_2',
         role: 'admin',
         conversationId: '65f1a2b3c4d5e6f708091a2b',
       });

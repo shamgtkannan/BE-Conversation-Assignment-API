@@ -20,17 +20,6 @@ const assignedLine = () => ({
   version: 1,
 });
 
-const unassignedLine = () => ({
-  eventId: 'event_2',
-  workspaceId: 'workspace_1',
-  conversationId: '65f1a2b3c4d5e6f708091a2b',
-  action: 'unassigned',
-  previousAgentId: '65f1a2b3c4d5e6f708091a2c',
-  performedBy: 'user_2',
-  createdAt: at,
-  version: 2,
-});
-
 describe('AssignmentHistoryDo schema', () => {
   it('maps to the "assignment_history" collection', () => {
     expect(Model.collection.name).toBe('assignment_history');
@@ -47,11 +36,7 @@ describe('AssignmentHistoryDo schema', () => {
       ).resolves.toBeUndefined();
     });
 
-    it('accepts an unassigned line', async () => {
-      await expect(new Model(unassignedLine()).validate()).resolves.toBeUndefined();
-    });
-
-    it.each(['eventId', 'workspaceId', 'conversationId', 'action', 'performedBy', 'createdAt', 'version'] as const)(
+    it.each(['eventId', 'workspaceId', 'conversationId', 'action', 'newAgentId', 'performedBy', 'createdAt', 'version'] as const)(
       'rejects a line without %s',
       async (field) => {
         const props: Partial<ReturnType<typeof assignedLine>> = assignedLine();

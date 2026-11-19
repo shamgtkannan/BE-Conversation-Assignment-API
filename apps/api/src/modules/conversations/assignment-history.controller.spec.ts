@@ -46,20 +46,8 @@ const first: IAssignmentHistoryEntity = {
   version: 1,
 };
 
-const removed: IAssignmentHistoryEntity = {
-  id: '000000000000000000000003',
-  eventId: 'event_3',
-  workspaceId: 'workspace_1',
-  conversationId,
-  action: 'unassigned',
-  previousAgentId: agentB,
-  performedBy: 'user_3',
-  createdAt: new Date('2026-11-13T11:00:00.000Z'),
-  version: 3,
-};
-
 const page: Page<IAssignmentHistoryEntity> = {
-  items: [removed, reassigned, first],
+  items: [reassigned, first],
   hasNext: true,
   next: 'next_token',
   hasPrevious: false,
@@ -112,16 +100,6 @@ describe('GET /conversations/:id/assignment-history', () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({
         items: [
-          {
-            id: '000000000000000000000003',
-            conversationId,
-            action: 'unassigned',
-            previousAgentId: agentB,
-            newAgentId: null,
-            performedBy: 'user_3',
-            occurredAt: '2026-11-13T11:00:00.000Z',
-            version: 3,
-          },
           {
             id: '000000000000000000000002',
             conversationId,

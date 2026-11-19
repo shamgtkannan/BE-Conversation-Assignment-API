@@ -13,7 +13,6 @@ import {
 } from './assign-conversation.use-case';
 import { BarrierConversationRepository } from './testing/barrier-conversation.repository';
 import { InMemoryAgentLookup } from './testing/in-memory-agent-lookup';
-import { InMemoryEventPublisher } from './testing/in-memory-event-publisher';
 import { InMemoryConversationRepository } from './testing/in-memory-conversation.repository';
 
 const id = (n: number) => n.toString(16).padStart(24, '0');
@@ -28,8 +27,6 @@ const agentB = id(101);
 describe('AssignConversationUseCase', () => {
   let repository: InMemoryConversationRepository;
   let agents: InMemoryAgentLookup;
-  let events: InMemoryEventPublisher;
-  let eventCounter: number;
   let current: Date;
   let useCase: AssignConversationUseCase;
 
@@ -51,19 +48,11 @@ describe('AssignConversationUseCase', () => {
   const stored = () => repository.findById('workspace_1', conversationId);
 
   const build = (conversations: InMemoryConversationRepository) =>
-    new AssignConversationUseCase(
-      conversations,
-      agents,
-      { now: () => current },
-      events,
-      { next: () => `event_${++eventCounter}` },
-    );
+    new AssignConversationUseCase(conversations, agents, { now: () => current });
 
   beforeEach(() => {
     repository = new InMemoryConversationRepository();
     agents = new InMemoryAgentLookup();
-    events = new InMemoryEventPublisher();
-    eventCounter = 0;
     agents.add('workspace_1', agentA);
     agents.add('workspace_1', agentB);
     current = assignTime;
@@ -289,122 +278,4 @@ describe('AssignConversationUseCase', () => {
     });
   });
 
-  describe('events', () => {
-    const assignedEvent = {
-      type: 'conversation.assigned.v1',
-      eventId: 'event_1',
-      occurredAt: assignTime,
-      workspaceId: 'workspace_1',
-      conversationId,
-      previousAgentId: null,
-      agentId: agentA,
-      assignedBy: 'user_1',
-      version: 1,
-    };
-
-    it('publishes conversation.assigned.v1 after the first assignment', async () => {
-      await seed();
-
-      await useCase.execute(command());
-
-      expect(events.published).toEqual([assignedEvent]);
-    });
-
-    it('names the replaced agent when another one is assigned', async () => {
-      await seed();
-      await useCase.execute(command());
-      current = reassignTime;
-
-      await useCase.execute(command({ agentId: agentB, userId: 'user_2' }));
-
-      expect(events.published[1]).toEqual({
-        ...assignedEvent,
-        eventId: 'event_2',
-        occurredAt: reassignTime,
-        previousAgentId: agentA,
-        agentId: agentB,
-        assignedBy: 'user_2',
-        version: 2,
-      });
-    });
-
-    it('gives every event its own id', async () => {
-      await seed();
-      await useCase.execute(command());
-      await useCase.execute(command({ agentId: agentB }));
-
-      const ids = events.published.map((event) => event.eventId);
-      expect(new Set(ids).size).toBe(2);
-    });
-
-    it('publishes after the conversation is saved, never before', async () => {
-      await seed();
-      const save = jest.spyOn(repository, 'save');
-      const publish = jest.spyOn(events, 'publish');
-
-      await useCase.execute(command());
-
-      expect(save.mock.invocationCallOrder[0]).toBeLessThan(publish.mock.invocationCallOrder[0]);
-    });
-
-    it('publishes nothing when the same agent is assigned again', async () => {
-      await seed();
-      await useCase.execute(command());
-
-      await useCase.execute(command({ userId: 'user_2' }));
-
-      expect(events.published).toHaveLength(1);
-    });
-
-    it('publishes nothing for a closed conversation', async () => {
-      await seed('closed');
-
-      await expect(useCase.execute(command())).rejects.toBeInstanceOf(ConversationClosedError);
-
-      expect(events.published).toEqual([]);
-    });
-
-    it.each([
-      ['a role that may not assign', { role: 'agent' }],
-      ['a malformed conversation id', { conversationId: 'conv_123' }],
-      ['a malformed agent id', { agentId: 'agent_456' }],
-      ['a conversation that does not exist', { conversationId: id(999) }],
-      ['an agent that does not exist', { agentId: id(999) }],
-    ])('publishes nothing for %s', async (_label, overrides) => {
-      await seed();
-
-      await expect(useCase.execute(command(overrides))).rejects.toBeDefined();
-
-      expect(events.published).toEqual([]);
-    });
-
-    it("publishes nothing for another workspace's conversation", async () => {
-      await seed('open', 'workspace_2');
-
-      await expect(useCase.execute(command())).rejects.toBeInstanceOf(ConversationNotFoundError);
-
-      expect(events.published).toEqual([]);
-    });
-
-    it('publishes only the winner of two simultaneous assignments', async () => {
-      const racing = new BarrierConversationRepository(2);
-      await racing.save(
-        Conversation.create({
-          id: conversationId,
-          workspaceId: 'workspace_1',
-          subject: 'Help',
-          now: created,
-        }),
-      );
-      const race = build(racing);
-
-      await Promise.allSettled([
-        race.execute(command({ agentId: agentA })),
-        race.execute(command({ agentId: agentB })),
-      ]);
-
-      expect(events.published).toHaveLength(1);
-      expect(events.published[0]).toMatchObject({ version: 1 });
-    });
-  });
 });

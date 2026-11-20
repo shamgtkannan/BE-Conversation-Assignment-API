@@ -67,8 +67,6 @@ export class ConversationDo implements IConversationEntity {
 
 /** Compiled Mongoose schema for {@link ConversationDo}. */
 export const ConversationDoSchema = SchemaFactory.createForClass(ConversationDo);
-/** Hydrated Mongoose document of a conversation, as returned by queries. */
-export type ConversationDoc = mongoose.HydratedDocument<ConversationDo>;
 
 ConversationDoSchema.set('toObject', { getters: true });
 ConversationDoSchema.set('toJSON', { getters: true });

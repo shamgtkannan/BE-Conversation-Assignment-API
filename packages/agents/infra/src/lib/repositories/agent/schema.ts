@@ -46,8 +46,6 @@ export class AgentDo implements IAgentEntity {
 
 /** Compiled Mongoose schema for {@link AgentDo}. */
 export const AgentDoSchema = SchemaFactory.createForClass(AgentDo);
-/** Hydrated Mongoose document of an agent, as returned by queries. */
-export type AgentDoc = mongoose.HydratedDocument<AgentDo>;
 
 AgentDoSchema.set('toObject', { getters: true });
 AgentDoSchema.set('toJSON', { getters: true });

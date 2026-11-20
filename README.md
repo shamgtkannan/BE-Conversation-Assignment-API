@@ -102,9 +102,9 @@ The API reads `.env` from the working directory. Variables already set in the en
 
 ### Postman collection
 
-`postman/assignment-api.postman_collection.json` has a request for every endpoint, 54 in all, grouped as Authentication, Agents, Conversations and Assignment. Each request has test scripts that check the status code and the response. The Assignment folder covers every rule in the specification: valid assignment, reassignment, the same agent twice, unassigning, an unknown agent or conversation, another workspace, a closed conversation, the `agent` role, and invalid bodies.
+`postman/assignment-api.postman_collection.json` has a request for every endpoint, 60 in all, grouped as Authentication, Agents, Conversations and Assignment. Each request has test scripts that check the status code and the response. `PATCH` and `DELETE` only answer that the request was sent, so their scripts read the conversation (and the assignment history) until the change shows. The Assignment folder covers every rule in the specification: valid assignment, reassignment, the same agent twice, unassigning, an unknown agent or conversation, another workspace, a closed conversation, the `agent` role, and invalid bodies.
 
-1. Start MongoDB and the API (steps 2 and 3 above).
+1. Start MongoDB, Kafka and the API (steps 2 and 3 above).
 2. In Postman, choose Import and select the file.
 3. Run the collection with the Collection Runner, in order. Requests save the ids they create as collection variables, and agent emails are generated per run, so it can be run again against the same database.
 
@@ -280,6 +280,16 @@ npx nx run-many -t lint
 npx nx run-many -t integration     # real MongoDB, needs step 2
 ```
 
+Demos and their check (the API, MongoDB and Kafka must be running, see steps 2 and 3):
+
+```sh
+npm run demo:concurrency [N]   # N (default 10) simultaneous PATCHes for one conversation
+npm run demo:kafka-down        # stops Kafka, shows the 503, starts it again
+npm run test:scripts           # unit tests of the demos' helper (no services needed)
+```
+
+`demo:concurrency` sends every request at the same moment to a different agent. All answer `200` (request sent), none is rejected, and the consumer applies them one after another. The script then reads the assignment history and checks that the chain is unbroken (each line starts with the agent the line before it ended on, versions rise, the last line is the agent the conversation really has). `demo:kafka-down` stops the Kafka container: a `PATCH` answers `503` in under a second and changes nothing, while reads and the synchronous checks (`403`, `404`) still work. After Kafka is back the same request succeeds.
+
 Single projects: `npx nx test conversations-application`, `npx nx integration api`, `npx nx integration agents-infra`, `npx nx integration conversations-infra`.
 
 **Unit tests** use in-memory fakes of the ports, so they need no Nest or MongoDB. The assignment use cases are in `packages/conversations/application/src/lib` (`assign-conversation.use-case.spec.ts` and `unassign-conversation.use-case.spec.ts`). They cover:
@@ -295,7 +305,10 @@ Single projects: `npx nx test conversations-application`, `npx nx integration ap
 | Assign same agent again | No write |
 | Unassign conversation | `unassign-conversation.use-case.spec.ts`, the three fields cleared |
 | Unauthorized user | The `agent` role and unknown roles, rejected before anything is read |
-| Invalid request body | `conversations.assign.controller.spec.ts` in `apps/api/src/modules/conversations`, which runs the real validation pipe and exception filter against fake use cases. Malformed ids are covered in the use case specs. |
+| Concurrent assignments | `conversations.assignment.integration.spec.ts` and `conversation.repository.integration.spec.ts` (versioned save, one winner per version), `npm run demo:concurrency` |
+| Request side (refused or redelivered requests) | `conversations.requests.integration.spec.ts` |
+| Assignment history and event | `conversations.events.integration.spec.ts` (`conversation.assigned.v1`), `conversations.history.integration.spec.ts` (the history line and its endpoint) |
+| Invalid request body | `assignment.controller.spec.ts` in `apps/api/src/modules/conversations`, which runs the real validation pipe and exception filter against fake use cases. Malformed ids are covered in the use case specs. |
 
 The domain rules (`assign`, `unassign`) have their own specs in `packages/conversations/domain`.
 
@@ -317,17 +330,17 @@ packages/
   conversations/
     domain/                    Conversation (create, assign, unassign, restore, version), conversation events, assignment history line, domain errors
     application/               use cases, ConversationRepository, AgentLookup, EventPublisher and AssignmentHistoryRepository ports, test doubles
-    infra/                     Mongoose schemas, indexes, repositories, id generator, Kafka event publisher and decoder
+    infra/                     Mongoose schemas, indexes, repositories, id generator, change-stream watcher, Kafka publishers and decoders
 apps/
   api/src/
     auth/                      mock AuthGuard, @CurrentAuth()
     common/                    DomainExceptionFilter, MongoModule, KafkaModule, KafkaProducerService, SystemClock
     modules/agents/            controller, DTOs, response mapping, Nest module
-    modules/conversations/     controllers, DTOs, response mapping, Nest module, agent-lookup adapter, history and assignment-request consumers
+    modules/conversations/     controllers (`AssignmentController` sends requests, `AssignmentHistoryController` reads history), DTOs, response mapping, Nest module, agent-lookup adapter, history and assignment-request consumers
 ```
 
 - **Domain** holds the entities and business rules and imports no framework or database. `Conversation` is immutable: `assign` and `unassign` return a new conversation, or the same instance when nothing changes.
-- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AssignmentHistoryRepository`, `AgentLookup`, `EventPublisher`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP.
+- **Application** holds plain-class use cases and the ports they need (`ConversationRepository`, `AssignmentHistoryRepository`, `AgentLookup`, `AssignmentRequestPublisher`, `EventPublisher`, `Clock`, `IdGenerator`). The role check lives in the use case, so it holds without HTTP. `RequestAssignmentUseCase` runs the synchronous checks (role, ids, conversation and agent exist, not closed) and publishes the request; `AssignConversationUseCase` and `UnassignConversationUseCase` carry it out in the request consumer; `AnnounceAssignmentUseCase` turns a change-stream change into `conversation.assigned.v1`.
 - **Infra** implements the ports with Mongoose: schemas, mappers between documents and entities, and indexes.
 - **apps/api** is the presentation layer and composition root. Controllers only validate input, take the caller from `@CurrentAuth()` and delegate. Modules build the use cases with `useFactory` and bind ports to adapters through Symbol tokens. The `DomainExceptionFilter` turns domain errors into HTTP statuses in one place, so controllers never catch.
 - **Contexts stay separate.** Conversations must know whether an agent exists, so it owns an `AgentLookup` port. `AgentsBackedAgentLookup` in `apps/api` implements it by calling the agents `GetAgentUseCase`. The two contexts never import each other.

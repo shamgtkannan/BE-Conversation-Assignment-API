@@ -57,8 +57,6 @@ export class AssignmentHistoryDo implements IAssignmentHistoryEntity {
 
 /** Compiled Mongoose schema for {@link AssignmentHistoryDo}. */
 export const AssignmentHistoryDoSchema = SchemaFactory.createForClass(AssignmentHistoryDo);
-/** Hydrated Mongoose document of a history line, as returned by queries. */
-export type AssignmentHistoryDoc = mongoose.HydratedDocument<AssignmentHistoryDo>;
 
 AssignmentHistoryDoSchema.set('toObject', { getters: true });
 AssignmentHistoryDoSchema.set('toJSON', { getters: true });

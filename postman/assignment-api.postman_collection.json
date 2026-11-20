@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6b1c2a4e-3f1d-4b7e-9a52-0c8d5e7f1a90",
     "name": "Conversation Assignment API",
-    "description": "Postman collection for the Conversation Assignment API (NestJS and MongoDB).\n\n**Before you run it**\n1. Start MongoDB and the API (see the README): `docker compose up -d --wait`, then `npx nx serve api`.\n2. Import this file into Postman.\n3. Run the whole collection with the Collection Runner, in order. Later folders use the ids that earlier requests save as collection variables.\n\n**Authentication.** There is no login. Each request sends three headers: `x-user-id`, `x-workspace-id` and `x-role`, taken from the variables below. Requests that need another role or workspace override them.\n\n**Variables.** The defaults below are collection variables. For a different host, user or workspace, import `postman/local.postman_environment.json`, edit its values and select it: an environment value overrides the collection default, so nothing in the collection needs changing.\n\n| Variable | Default | Meaning |\n|---|---|---|\n| `baseUrl` | `http://localhost:3000` | Where the API runs |\n| `userId` | `user_123` | The acting user, recorded as `assignedBy` |\n| `workspaceId` | `workspace_1` | The caller's workspace |\n| `role` | `manager` | `admin`, `manager` or `agent` |\n| `adminUserId` | `user_admin` | A second user, used for the admin requests |\n| `otherWorkspaceId` | `workspace_2` | A different workspace, for isolation checks |\n| `unknownId` | `aaaaaaaaaaaaaaaaaaaaaaaa` | A well-formed id that does not exist |\n\nThe remaining variables (`agentId`, `agent2Id`, `foreignAgentId`, `conversationId`, `closedConversationId`, `nextToken` and the others) are filled in by test scripts while the collection runs. Agent emails are generated per run, so the collection can be run repeatedly against the same database.\n\n**Ids.** Ids are 24-character hex strings. The specification's examples such as `conv_123` are rejected with 400, and some requests send them on purpose.\n\n**Command line.** `npx newman run postman/assignment-api.postman_collection.json` runs every request and its tests.",
+    "description": "Postman collection for the Conversation Assignment API (NestJS and MongoDB).\n\n**Before you run it**\n1. Start MongoDB and the API (see the README): `docker compose up -d --wait` (MongoDB and Kafka), then `npx nx serve api`.\n2. Import this file into Postman.\n3. Run the whole collection with the Collection Runner, in order. Later folders use the ids that earlier requests save as collection variables.\n\n**Authentication.** There is no login. Each request sends three headers: `x-user-id`, `x-workspace-id` and `x-role`, taken from the variables below. Requests that need another role or workspace override them.\n\n**Variables.** The defaults below are collection variables. For a different host, user or workspace, import `postman/local.postman_environment.json`, edit its values and select it: an environment value overrides the collection default, so nothing in the collection needs changing.\n\n| Variable | Default | Meaning |\n|---|---|---|\n| `baseUrl` | `http://localhost:3000` | Where the API runs |\n| `userId` | `user_123` | The acting user, recorded as `assignedBy` |\n| `workspaceId` | `workspace_1` | The caller's workspace |\n| `role` | `manager` | `admin`, `manager` or `agent` |\n| `adminUserId` | `user_admin` | A second user, used for the admin requests |\n| `otherWorkspaceId` | `workspace_2` | A different workspace, for isolation checks |\n| `unknownId` | `aaaaaaaaaaaaaaaaaaaaaaaa` | A well-formed id that does not exist |\n\nThe remaining variables (`agentId`, `agent2Id`, `foreignAgentId`, `conversationId`, `closedConversationId`, `nextToken` and the others) are filled in by test scripts while the collection runs. Agent emails are generated per run, so the collection can be run repeatedly against the same database.\n\n**Ids.** Ids are 24-character hex strings. The specification's examples such as `conv_123` are rejected with 400, and some requests send them on purpose.\n\n**Command line.** `npx newman run postman/assignment-api.postman_collection.json` runs every request and its tests.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -1654,7 +1654,7 @@
                 }
               }
             },
-            "description": "`assignedBy` and the workspace come from the auth headers, never from the body."
+            "description": "`assignedBy` and the workspace come from the auth headers, never from the body. The answer only says the request was sent (`commandId`, `status: requested`); the test then reads the conversation until the assignment has been applied."
           },
           "response": [],
           "event": [
@@ -1663,16 +1663,31 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"assigned, recording who and when\", () => {",
-                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get(\"conversationId\"));",
-                  "  pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agentId\"));",
-                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"userId\"));",
-                  "  pm.expect(body.assignedAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/);",
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
                   "});",
-                  "pm.collectionVariables.set(\"assignedAt\", body.assignedAt);",
-                  "pm.collectionVariables.set(\"assignedUpdatedAt\", body.updatedAt);"
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('assigned in the database, recording who and when', async () => {",
+                  "  const c = await poll(conv(), c => c.assignedAgentId === cv('agentId'));",
+                  "  pm.expect(c.assignedBy).to.eql(cv('userId'));",
+                  "  pm.expect(c.assignedAt).to.match(/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/);",
+                  "  pm.collectionVariables.set('assignedAt', c.assignedAt);",
+                  "  pm.collectionVariables.set('assignedUpdatedAt', c.updatedAt);",
+                  "});"
                 ]
               }
             }
@@ -1729,13 +1744,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"assignment untouched\", () => {",
-                  "  pm.expect(body.assignedAt).to.eql(pm.collectionVariables.get(\"assignedAt\"));",
-                  "  pm.expect(body.updatedAt).to.eql(pm.collectionVariables.get(\"assignedUpdatedAt\"));",
-                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"userId\"));",
-                  "});"
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
+                  "});",
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('assignment untouched', () => new Promise((resolve, reject) => setTimeout(() =>",
+                  "  poll(conv(), () => true).then(c => {",
+                  "    pm.expect(c.assignedAt).to.eql(cv('assignedAt'));",
+                  "    pm.expect(c.updatedAt).to.eql(cv('assignedUpdatedAt'));",
+                  "    pm.expect(c.assignedBy).to.eql(cv('userId'));",
+                  "  }).then(resolve, reject), 1500)));"
                 ]
               }
             }
@@ -1854,14 +1886,30 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"previous assignment replaced\", () => {",
-                  "  pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agent2Id\"));",
-                  "  pm.expect(body.assignedBy).to.eql(pm.collectionVariables.get(\"adminUserId\"));",
-                  "  pm.expect(body.assignedAt).to.not.eql(pm.collectionVariables.get(\"assignedAt\"));",
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
                   "});",
-                  "pm.collectionVariables.set(\"reassignedUpdatedAt\", body.updatedAt);"
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('previous assignment replaced', async () => {",
+                  "  const c = await poll(conv(), c => c.assignedAgentId === cv('agent2Id'));",
+                  "  pm.expect(c.assignedBy).to.eql(cv('adminUserId'));",
+                  "  pm.expect(c.assignedAt).to.not.eql(cv('assignedAt'));",
+                  "  pm.collectionVariables.set('reassignedUpdatedAt', c.updatedAt);",
+                  "});"
                 ]
               }
             }
@@ -2615,7 +2663,7 @@
                 "assignment"
               ]
             },
-            "description": "`assignedAgentId`, `assignedAt` and `assignedBy` are cleared. They are `null` here and absent in the database."
+            "description": "`assignedAgentId`, `assignedAt` and `assignedBy` are cleared. They are `null` here and absent in the database. Removing an agent produces no event and no history line."
           },
           "response": [],
           "event": [
@@ -2624,13 +2672,29 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"assignment cleared\", () => {",
-                  "  pm.expect(body.id).to.eql(pm.collectionVariables.get(\"conversationId\"));",
-                  "  pm.expect(body.assignedAgentId).to.be.null; pm.expect(body.assignedAt).to.be.null; pm.expect(body.assignedBy).to.be.null;",
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
                   "});",
-                  "pm.collectionVariables.set(\"unassignedUpdatedAt\", body.updatedAt);"
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('assignment cleared', async () => {",
+                  "  const c = await poll(conv(), c => c.assignedAgentId === null);",
+                  "  pm.expect(c.assignedAt).to.be.null; pm.expect(c.assignedBy).to.be.null;",
+                  "  pm.collectionVariables.set('unassignedUpdatedAt', c.updatedAt);",
+                  "});"
                 ]
               }
             }
@@ -2673,9 +2737,29 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
-                  "const body = pm.response.json();",
-                  "pm.test(\"nothing changed\", () => { pm.expect(body.assignedAgentId).to.be.null; pm.expect(body.updatedAt).to.eql(pm.collectionVariables.get(\"unassignedUpdatedAt\")); });"
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
+                  "});",
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('nothing changed', () => new Promise((resolve, reject) => setTimeout(() =>",
+                  "  poll(conv(), () => true).then(c => {",
+                  "    pm.expect(c.assignedAgentId).to.be.null;",
+                  "    pm.expect(c.updatedAt).to.eql(cv('unassignedUpdatedAt'));",
+                  "  }).then(resolve, reject), 1500)));"
                 ]
               }
             }
@@ -2731,9 +2815,332 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responds 200\", () => pm.response.to.have.status(200));",
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const poll = (path, check, left = 40) => new Promise((resolve, reject) => {",
+                  "  const once = () => pm.sendRequest({ url: cv('baseUrl') + path, method: 'GET', header: headers }, (err, res) => {",
+                  "    const body = !err && res.code === 200 ? res.json() : null;",
+                  "    if (body && check(body)) return resolve(body);",
+                  "    if (--left <= 0) return reject(new Error('not applied within 10s: ' + path));",
+                  "    setTimeout(once, 250);",
+                  "  });",
+                  "  once();",
+                  "});",
+                  "const conv = () => '/conversations/' + cv('conversationId');",
+                  "pm.test('responds 200, request sent', () => {",
+                  "  pm.response.to.have.status(200);",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.status).to.eql('requested');",
+                  "  pm.expect(b.commandId).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.test('assigned again', async () => {",
+                  "  await poll(conv(), c => c.assignedAgentId === cv('agentId'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "List assignment history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment-history"
+              ]
+            },
+            "description": "Written by a consumer after each `conversation.assigned.v1` event, so the test waits for it. Any role may read."
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cv = (k) => pm.collectionVariables.get(k);",
+                  "const headers = { 'x-user-id': cv('userId'), 'x-workspace-id': cv('workspaceId'), 'x-role': cv('role') };",
+                  "const url = cv('baseUrl') + '/conversations/' + cv('conversationId') + '/assignment-history';",
+                  "// the history is written by a consumer, so wait until the three lines exist",
+                  "const poll = (left = 40) => new Promise((resolve, reject) => pm.sendRequest({ url, method: 'GET', header: headers }, (err, res) => {",
+                  "  const b = !err && res.code === 200 ? res.json() : null;",
+                  "  if (b && b.items.length >= 3) return resolve(b);",
+                  "  if (left <= 1) return reject(new Error('history not written within 10s'));",
+                  "  setTimeout(() => poll(left - 1).then(resolve, reject), 250);",
+                  "}));",
+                  "pm.test('responds 200', () => pm.response.to.have.status(200));",
+                  "pm.test('lists every assignment, newest first, naming the previous agent', async () => {",
+                  "  const b = await poll();",
+                  "  const [third, second, first] = b.items;",
+                  "  pm.expect(b.items).to.have.length(3);  // unassigning and repeating an assignment leave no line",
+                  "  pm.expect([first.action, second.action, third.action]).to.eql(['assigned', 'assigned', 'assigned']);",
+                  "  pm.expect(first.previousAgentId).to.be.null;",
+                  "  pm.expect(first.newAgentId).to.eql(cv('agentId'));  pm.expect(first.performedBy).to.eql(cv('userId'));",
+                  "  pm.expect(second.previousAgentId).to.eql(cv('agentId'));",
+                  "  pm.expect(second.newAgentId).to.eql(cv('agent2Id')); pm.expect(second.performedBy).to.eql(cv('adminUserId'));",
+                  "  pm.expect(third.previousAgentId).to.be.null;  // it followed an unassign",
+                  "  pm.expect(third.newAgentId).to.eql(cv('agentId'));",
+                  "  pm.expect(first.occurredAt < second.occurredAt && second.occurredAt < third.occurredAt).to.be.true;",
+                  "  pm.expect(b.hasNext).to.be.false;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignment history, paging (limit 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment-history?limit=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment-history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('one line and a next page', () => { pm.expect(b.items).to.have.length(1); pm.expect(b.hasNext).to.be.true; pm.expect(b.next).to.be.a('string'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignment history, unknown conversation (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{unknownId}}/assignment-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{unknownId}}",
+                "assignment-history"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 404', () => pm.response.to.have.status(404));",
                   "const body = pm.response.json();",
-                  "pm.test(\"assigned again\", () => pm.expect(body.assignedAgentId).to.eql(pm.collectionVariables.get(\"agentId\")));"
+                  "pm.test('error body is 404 Not Found', () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql('Not Found'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignment history, malformed id (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/conv_123/assignment-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "conv_123",
+                "assignment-history"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('error body is 400 Bad Request', () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql('Bad Request'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignment history, limit out of range (400)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{workspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment-history?limit=0",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment-history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 400', () => pm.response.to.have.status(400));",
+                  "const body = pm.response.json();",
+                  "pm.test('error body is 400 Bad Request', () => { pm.expect(body.statusCode).to.eql(400); pm.expect(body.error).to.eql('Bad Request'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assignment history of another workspace (404)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "x-user-id",
+                "value": "{{userId}}"
+              },
+              {
+                "key": "x-workspace-id",
+                "value": "{{otherWorkspaceId}}"
+              },
+              {
+                "key": "x-role",
+                "value": "{{role}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/conversations/{{conversationId}}/assignment-history",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "conversations",
+                "{{conversationId}}",
+                "assignment-history"
+              ]
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('responds 404', () => pm.response.to.have.status(404));",
+                  "const body = pm.response.json();",
+                  "pm.test('error body is 404 Not Found', () => { pm.expect(body.statusCode).to.eql(404); pm.expect(body.error).to.eql('Not Found'); });"
                 ]
               }
             }
@@ -2875,7 +3282,7 @@
           ]
         }
       ],
-      "description": "Run in order: later requests use the agent and conversation created earlier. The error cases check each rule from the specification: role, existence, workspace scoping and closed conversations."
+      "description": "Run in order: later requests use the agent and conversation created earlier. `PATCH` and `DELETE` only send a request (`200`, `commandId`, `status: requested`); a consumer applies it, so the test scripts read the conversation until the change shows. The error cases (role, existence, workspace, closed conversation, bad ids) are answered immediately, before anything is sent. An answer of `503` (Kafka unreachable) cannot be shown here; see `npm run demo:kafka-down`."
     }
   ],
   "variable": [
